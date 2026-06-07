@@ -346,7 +346,9 @@
             "updated": "更新成功",
             "updateFailed": "更新失败",
             "deleted": "删除成功",
-            "autoAddFailed": "自动添加失败"
+            "autoAddFailed": "自动添加失败",
+            "checkDone": "检测完成",
+            "checkFailed": "检测失败"
         },
         "create": {
             "title": "创建分组",
@@ -380,7 +382,14 @@
             "autoAdd": "自动添加",
             "clear": "清空",
             "selectChannel": "渠道",
-            "selectModel": "模型"
+            "selectModel": "模型",
+            "retryCount": "失败重试次数",
+            "checkItem": "检测渠道",
+            "checkAll": "检测全部",
+            "deleteFailed": "删除异常",
+            "checkOk": "正常",
+            "checkBad": "异常",
+            "checkUnavailable": "当前项暂不可检测"
         },
         "mode": {
             "roundRobin": "轮询",
@@ -471,6 +480,28 @@
             },
             "noBaseUrls": "暂无 Base URL",
             "noKeys": "暂无密钥",
+            "keyCheck": {
+                "model": "检测模型",
+                "searchModel": "搜索模型",
+                "noModels": "暂无模型",
+                "all": "检测全部",
+                "selected": "检测已选",
+                "deleteSelected": "删除已选",
+                "disableSelected": "禁用已选",
+                "disableFailedKeys": "禁用异常",
+                "deleteInvalid": "删除 401/403",
+                "modelRequired": "请选择检测模型",
+                "done": "检测完成",
+                "failed": "检测失败",
+                "deleted": "密钥已删除",
+                "deleteFailed": "删除失败",
+                "disabled": "密钥已禁用",
+                "disableFailed": "禁用失败",
+                "ok": "正常",
+                "bad": "异常",
+                "sorted": "排序已保存",
+                "sortFailed": "排序保存失败"
+            },
             "metrics": {
                 "totalRequests": "总请求",
                 "totalToken": "总 Token",
@@ -507,6 +538,10 @@
             "baseUrlDelay": "延迟(ms)",
             "advanced": "高级设置",
             "apiKey": "API Key",
+            "keyModeRoundRobin": "轮询",
+            "keyModeRandom": "随机",
+            "keyModeFailover": "故障转移",
+            "keyModeWeighted": "加权",
             "customHeader": "自定义 Header",
             "customHeaderKey": "Header Key",
             "customHeaderValue": "Header Value",
@@ -541,7 +576,9 @@
             "autoGroupRegex": "正则匹配",
             "matchRegex": "匹配正则",
             "matchRegexPlaceholder": "可选：用于匹配请求模型名称的正则表达式",
-            "remark": "备注"
+            "remark": "备注",
+            "priority": "优先级",
+            "weight": "权重"
         }
     }
 }

@@ -3,6 +3,9 @@ import { apiClient } from '../client';
 import { logger } from '@/lib/logger';
 import { formatCount, formatMoney, formatTime } from '@/lib/utils';
 import { StatsChannel, type StatsMetricsFormatted } from './stats';
+import { GroupMode } from './group';
+
+export { GroupMode };
 /**
  * 渠道类型枚举
  */
@@ -44,6 +47,8 @@ export type ChannelKey = {
     last_use_time_stamp: number;
     total_cost: number;
     remark: string;
+    priority: number;
+    weight: number;
 };
 
 /**
@@ -56,6 +61,7 @@ export type Channel = {
     enabled: boolean;
     base_urls: BaseUrl[];
     keys: ChannelKey[];
+    key_mode: GroupMode;
     model: string;
     custom_model: string;
     proxy: boolean;
@@ -75,6 +81,15 @@ type ChannelServer = Omit<Channel, 'base_urls' | 'custom_header' | 'keys'> & {
     keys: ChannelKey[] | null;
 };
 
+function sortChannelKeys(keys: ChannelKey[] | null | undefined): ChannelKey[] {
+    return [...(keys ?? [])].sort((a, b) => {
+        const left = a.priority > 0 ? a.priority : Number.MAX_SAFE_INTEGER;
+        const right = b.priority > 0 ? b.priority : Number.MAX_SAFE_INTEGER;
+        if (left === right) return a.id - b.id;
+        return left - right;
+    });
+}
+
 /**
  * 创建渠道请求：必填字段 + 可选字段
  */
@@ -83,7 +98,8 @@ export type CreateChannelRequest = {
     type: ChannelType;
     enabled?: boolean;
     base_urls: BaseUrl[];
-    keys: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'remark'>>;
+    keys: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'remark' | 'priority' | 'weight'>>;
+    key_mode?: GroupMode;
     model: string;
     custom_model?: string;
     proxy?: boolean;
@@ -104,6 +120,7 @@ export type UpdateChannelRequest = {
     type?: ChannelType;
     enabled?: boolean;
     base_urls?: BaseUrl[];
+    key_mode?: GroupMode;
     model?: string;
     custom_model?: string;
     proxy?: boolean;
@@ -114,9 +131,16 @@ export type UpdateChannelRequest = {
     param_override?: string | null;
     match_regex?: string | null;
     // keys diff
-    keys_to_add?: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'remark'>>;
-    keys_to_update?: Array<{ id: number; enabled?: boolean; channel_key?: string; remark?: string }>;
+    keys_to_add?: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'remark' | 'priority' | 'weight'>>;
+    keys_to_update?: Array<{ id: number; enabled?: boolean; channel_key?: string; remark?: string; priority?: number; weight?: number }>;
     keys_to_delete?: number[];
+};
+
+export type ChannelKeyCheckResult = {
+    id: number;
+    status_code: number;
+    ok: boolean;
+    error?: string;
 };
 
 export type FetchModelRequest = {
@@ -151,7 +175,7 @@ export function useChannelList() {
                 ...item,
                 base_urls: item.base_urls ?? [],
                 custom_header: item.custom_header ?? [],
-                keys: item.keys ?? [],
+                keys: sortChannelKeys(item.keys),
             }) satisfies Channel,
             formatted: {
                 input_token: formatCount(item.stats.input_token),
@@ -317,6 +341,22 @@ export function useFetchModel() {
         },
         onError: (error) => {
             logger.error('模型列表获取失败:', error);
+        },
+    });
+}
+
+export function useCheckChannelKeys() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (data: { id: number; model: string; key_ids?: number[] }) => {
+            return apiClient.post<ChannelKeyCheckResult[]>('/api/v1/channel/check-keys', data);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
+        },
+        onError: (error) => {
+            logger.error('渠道密钥检测失败:', error);
         },
     });
 }

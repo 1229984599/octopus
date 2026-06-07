@@ -9,9 +9,9 @@ import {
     Activity,
     TrendingUp,
     Globe,
-    Key
+    Key,
 } from 'lucide-react';
-import { useUpdateChannel, useDeleteChannel, type Channel, type UpdateChannelRequest } from '@/api/endpoints/channel';
+import { GroupMode, useUpdateChannel, useDeleteChannel, type Channel, type UpdateChannelRequest } from '@/api/endpoints/channel';
 import {
     MorphingDialogTitle,
     MorphingDialogDescription,
@@ -27,13 +27,8 @@ import { formatMoney } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
-export function CardContent({ channel, stats }: { channel: Channel; stats: StatsMetricsFormatted }) {
-    const { setIsOpen } = useMorphingDialog();
-    const updateChannel = useUpdateChannel();
-    const deleteChannel = useDeleteChannel();
-    const [isEditing, setIsEditing] = useState(false);
-    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
-    const [formData, setFormData] = useState<ChannelFormData>({
+function buildChannelFormData(channel: Channel): ChannelFormData {
+    return {
         name: channel.name,
         type: channel.type,
         enabled: channel.enabled,
@@ -42,7 +37,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         channel_proxy: channel.channel_proxy ?? '',
         param_override: channel.param_override ?? '',
         keys: channel.keys.length > 0
-            ? channel.keys.map((k) => ({
+            ? channel.keys.map((k, index) => ({
                 id: k.id,
                 enabled: k.enabled,
                 channel_key: k.channel_key,
@@ -50,15 +45,27 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                 last_use_time_stamp: k.last_use_time_stamp,
                 total_cost: k.total_cost,
                 remark: k.remark,
+                priority: k.priority > 0 ? k.priority : index + 1,
+                weight: k.weight > 0 ? k.weight : 1,
             }))
-            : [{ enabled: true, channel_key: '', remark: '' }],
+            : [{ enabled: true, channel_key: '', remark: '', priority: 1, weight: 1 }],
+        key_mode: channel.key_mode > 0 ? channel.key_mode : GroupMode.RoundRobin,
         model: channel.model,
         custom_model: channel.custom_model,
         proxy: channel.proxy,
         auto_sync: channel.auto_sync,
         auto_group: channel.auto_group,
         match_regex: channel.match_regex ?? '',
-    });
+    };
+}
+
+export function CardContent({ channel, stats }: { channel: Channel; stats: StatsMetricsFormatted }) {
+    const { setIsOpen } = useMorphingDialog();
+    const updateChannel = useUpdateChannel();
+    const deleteChannel = useDeleteChannel();
+    const [isEditing, setIsEditing] = useState(false);
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+    const [formData, setFormData] = useState<ChannelFormData>(() => buildChannelFormData(channel));
     const t = useTranslations('channel.detail');
 
     const currentView = isEditing ? 'editing' : 'viewing';
@@ -82,6 +89,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                 delay: Number(u.delay || 0),
             }));
         }
+        if (formData.key_mode !== channel.key_mode) req.key_mode = formData.key_mode;
         if (formData.model !== channel.model) req.model = formData.model;
         if (formData.custom_model !== channel.custom_model) req.custom_model = formData.custom_model;
         if (formData.proxy !== channel.proxy) req.proxy = formData.proxy;
@@ -117,26 +125,39 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
 
         const originalKeys = channel.keys;
         const originalByID = new Map(originalKeys.map((k) => [k.id, k]));
-        const nextKeys = formData.keys ?? [];
+        const nextKeys = (formData.keys ?? []).map((key, index) => ({
+            ...key,
+            priority: index + 1,
+            weight: key.weight && key.weight > 0 ? key.weight : 1,
+        }));
 
         const nextIDs = new Set(nextKeys.filter((k) => typeof k.id === 'number').map((k) => k.id as number));
         const keys_to_delete = originalKeys.filter((k) => !nextIDs.has(k.id)).map((k) => k.id);
 
         const keys_to_add = nextKeys
-            .filter((k) => !k.id && k.channel_key.trim())
-            .map((k) => ({ enabled: k.enabled, channel_key: k.channel_key, remark: k.remark ?? '' }));
+            .map((k, index) => ({ key: k, priority: index + 1 }))
+            .filter(({ key }) => !key.id && key.channel_key.trim())
+            .map(({ key, priority }) => ({
+                enabled: key.enabled,
+                channel_key: key.channel_key,
+                remark: key.remark ?? '',
+                priority,
+                weight: key.weight && key.weight > 0 ? key.weight : 1,
+            }));
 
         const keys_to_update = nextKeys
             .filter((k) => typeof k.id === 'number' && originalByID.has(k.id as number))
             .map((k) => {
                 const orig = originalByID.get(k.id as number)!;
-                const u: { id: number; enabled?: boolean; channel_key?: string; remark?: string } = { id: k.id as number };
+                const u: { id: number; enabled?: boolean; channel_key?: string; remark?: string; priority?: number; weight?: number } = { id: k.id as number };
                 if (k.enabled !== orig.enabled) u.enabled = k.enabled;
                 if (k.channel_key !== orig.channel_key) u.channel_key = k.channel_key;
                 if ((k.remark ?? '') !== orig.remark) u.remark = k.remark ?? '';
+                if ((k.priority ?? 0) !== orig.priority) u.priority = k.priority ?? 0;
+                if ((k.weight ?? 0) !== orig.weight) u.weight = k.weight ?? 0;
                 return Object.keys(u).length > 1 ? u : null;
             })
-            .filter((u) => u !== null) as Array<{ id: number; enabled?: boolean; channel_key?: string; remark?: string }>;
+            .filter((u) => u !== null) as Array<{ id: number; enabled?: boolean; channel_key?: string; remark?: string; priority?: number; weight?: number }>;
 
         if (keys_to_add.length > 0) req.keys_to_add = keys_to_add;
         if (keys_to_update.length > 0) req.keys_to_update = keys_to_update;
@@ -160,6 +181,11 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         setTimeout(() => {
             deleteChannel.mutate(channel.id);
         }, 300);
+    };
+
+    const enterEditMode = () => {
+        setFormData(buildChannelFormData(channel));
+        setIsEditing(true);
     };
 
     return (
@@ -352,30 +378,32 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                                         <Key className="size-3.5" />
                                         {t('sections.keys')}
                                     </h4>
-                                    <div className="rounded-2xl border bg-card overflow-hidden">
-                                        {channel.keys?.map((key) => (
-                                            <div key={key.id} className="flex items-center gap-3 p-3 sm:p-4 border-b last:border-0 hover:bg-accent/5 transition-colors">
+                                    <div className="max-h-80 overflow-y-auto rounded-2xl border bg-card">
+                                        {channel.keys?.map((key, index) => (
+                                            <div
+                                                key={key.id}
+                                                className="flex items-center gap-3 p-3 sm:p-4 border-b last:border-0 hover:bg-accent/5 transition-colors"
+                                            >
+                                                <span className="flex h-6 w-7 shrink-0 items-center justify-center rounded-lg bg-muted text-[10px] font-medium text-muted-foreground">
+                                                    {index + 1}
+                                                </span>
                                                 <div className={cn("size-2 shrink-0 rounded-full", key.enabled ? "bg-emerald-500" : "bg-destructive")} />
-
                                                 <span className="font-mono text-sm truncate min-w-0 flex-1">
                                                     {key.channel_key.length > 10
                                                         ? `${key.channel_key.slice(0, 4)}...${key.channel_key.slice(-4)}`
                                                         : key.channel_key}
                                                 </span>
-
                                                 {key.remark && (
                                                     <span className="text-xs text-muted-foreground truncate max-w-24" title={key.remark}>
                                                         {key.remark}
                                                     </span>
                                                 )}
-
                                                 <div className="flex items-center gap-2 shrink-0">
                                                     {key.last_use_time_stamp > 0 && (
                                                         <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline-block">
                                                             {new Date(key.last_use_time_stamp * 1000).toLocaleString()}
                                                         </span>
                                                     )}
-
                                                     {key.status_code !== 0 && (
                                                         <Badge
                                                             variant="secondary"
@@ -394,7 +422,6 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                                                             {key.status_code}
                                                         </Badge>
                                                     )}
-
                                                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                                                         {formatMoney(key.total_cost).formatted.value}
                                                         {formatMoney(key.total_cost).formatted.unit}
@@ -424,7 +451,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                             {/* 操作按钮 */}
                             <div className="grid gap-3 sm:grid-cols-2 pt-2">
                                 <Button
-                                    onClick={() => (isConfirmingDelete ? setIsConfirmingDelete(false) : setIsEditing(true))}
+                                    onClick={() => (isConfirmingDelete ? setIsConfirmingDelete(false) : enterEditMode())}
                                     variant={isConfirmingDelete ? 'secondary' : 'default'}
                                     className="w-full rounded-2xl h-12"
                                 >
@@ -457,6 +484,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                                 onCancel={() => setIsEditing(false)}
                                 cancelText={t('actions.cancel')}
                                 idPrefix="channel"
+                                channelId={channel.id}
                             />
                         </TabsContent>
                     </TabsContents>

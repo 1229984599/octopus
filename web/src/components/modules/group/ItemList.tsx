@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { Layers, GripVertical, X, Trash2 } from 'lucide-react';
+import { Layers, GripVertical, X, Trash2, RefreshCw } from 'lucide-react';
 import {
     DragDropContext,
     Draggable,
@@ -20,7 +20,13 @@ export interface SelectedMember extends LLMChannel {
     id: string;
     item_id?: number;
     weight?: number;
+    retry_count?: number;
 }
+
+export type MemberCheckState = {
+    ok: boolean;
+    message?: string;
+};
 
 function reorderList<T>(list: T[], startIndex: number, endIndex: number): T[] {
     const result = [...list];
@@ -40,6 +46,10 @@ function MemberItem({
     member,
     onRemove,
     onWeightChange,
+    onRetryCountChange,
+    onCheck,
+    checking,
+    checkState,
     isRemoving,
     index,
     showWeight = false,
@@ -50,6 +60,10 @@ function MemberItem({
     member: SelectedMember;
     onRemove: (id: string) => void;
     onWeightChange?: (id: string, weight: number) => void;
+    onRetryCountChange?: (id: string, retryCount: number) => void;
+    onCheck?: (member: SelectedMember) => void;
+    checking?: boolean;
+    checkState?: MemberCheckState;
     isRemoving?: boolean;
     index: number;
     showWeight?: boolean;
@@ -60,6 +74,7 @@ function MemberItem({
     const { Avatar: ModelAvatar } = getModelIcon(member.name);
     const [confirmDelete, setConfirmDelete] = useState(false);
     const isDisabled = member.enabled === false;
+    const t = useTranslations('group');
 
     return (
         <div
@@ -133,6 +148,48 @@ function MemberItem({
                     />
                 )}
 
+                <input
+                    type="number"
+                    min={0}
+                    value={member.retry_count ?? 0}
+                    onChange={(e) => onRetryCountChange?.(member.id, Math.max(0, parseInt(e.target.value) || 0))}
+                    title={t('form.retryCount')}
+                    className={cn(
+                        'w-12 h-6 text-xs text-center rounded border border-border bg-muted/50 focus:outline-none focus:ring-1 focus:ring-primary',
+                        isDisabled && 'text-muted-foreground'
+                    )}
+                />
+
+                {onCheck && member.item_id && (
+                    <motion.button
+                        type="button"
+                        onClick={() => onCheck(member)}
+                        disabled={checking}
+                        className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-50"
+                        initial={false}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.15 }}
+                        style={{ pointerEvents: 'auto' }}
+                        title={t('form.checkItem')}
+                    >
+                        <RefreshCw className={cn("size-3", checking && "animate-spin")} />
+                    </motion.button>
+                )}
+
+                {checkState && (
+                    <span
+                        className={cn(
+                            'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                            checkState.ok
+                                ? 'bg-green-500/15 text-green-700 dark:text-green-400'
+                                : 'bg-red-500/15 text-red-700 dark:text-red-400'
+                        )}
+                        title={checkState.message}
+                    >
+                        {checkState.ok ? t('form.checkOk') : t('form.checkBad')}
+                    </span>
+                )}
+
                 {(!showConfirmDelete || !confirmDelete) && (
                     <motion.button
                         layoutId={`delete-btn-member-${layoutScope ?? 'default'}-${member.id}`}
@@ -182,6 +239,10 @@ export interface MemberListProps {
     onReorder: (members: SelectedMember[]) => void;
     onRemove: (id: string) => void;
     onWeightChange?: (id: string, weight: number) => void;
+    onRetryCountChange?: (id: string, retryCount: number) => void;
+    onCheck?: (member: SelectedMember) => void;
+    checkingMemberId?: string | null;
+    checkResults?: Record<string, MemberCheckState>;
     /**
      * When true, auto-scroll the list to bottom when a *new visible* member appears
      * (i.e. a new member id is added). Useful in "editor" flows. Defaults to true.
@@ -214,6 +275,10 @@ export function MemberList({
     onReorder,
     onRemove,
     onWeightChange,
+    onRetryCountChange,
+    onCheck,
+    checkingMemberId,
+    checkResults,
     autoScrollOnAdd = true,
     onDragStart,
     onDrop,
@@ -320,6 +385,10 @@ export function MemberList({
                                                 member={member}
                                                 onRemove={onRemove}
                                                 onWeightChange={onWeightChange}
+                                                onRetryCountChange={onRetryCountChange}
+                                                onCheck={onCheck}
+                                                checking={checkingMemberId === member.id}
+                                                checkState={checkResults?.[member.id]}
                                                 isRemoving={removingIds.has(member.id)}
                                                 index={index}
                                                 showWeight={showWeight}

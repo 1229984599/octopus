@@ -12,6 +12,7 @@ export interface GroupItem {
     model_name: string;
     priority: number;
     weight: number;
+    retry_count: number;
 }
 
 /**
@@ -45,6 +46,7 @@ export interface GroupItemAddRequest {
     model_name: string;
     priority: number;
     weight: number;
+    retry_count: number;
 }
 
 /**
@@ -54,6 +56,7 @@ export interface GroupItemUpdateRequest {
     id: number;
     priority: number;
     weight: number;
+    retry_count: number;
 }
 
 /**
@@ -150,6 +153,30 @@ export function useUpdateGroup() {
         },
         onError: (error) => {
             logger.error('分组更新失败:', error);
+        },
+    });
+}
+
+export type GroupItemCheckResult = {
+    id: number;
+    status_code: number;
+    ok: boolean;
+    error?: string;
+};
+
+export function useCheckGroupItem() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (data: { group_id: number; item_id: number; model?: string }) => {
+            return apiClient.post<GroupItemCheckResult[]>('/api/v1/group/check-item', data);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
+            queryClient.invalidateQueries({ queryKey: ['groups', 'list'] });
+        },
+        onError: (error) => {
+            logger.error('分组渠道检测失败:', error);
         },
     });
 }

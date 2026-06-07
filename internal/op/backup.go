@@ -99,6 +99,9 @@ func DBImportIncremental(ctx context.Context, dump *model.DBDump) (*model.DBImpo
 		} else {
 			res.RowsAffected["channel_keys"] = n
 		}
+		if len(dump.ProxyConfigurations) > 0 {
+			res.RowsAffected["proxy_configurations"] = 0
+		}
 		if n, err := createDoNothing(tx, dump.Groups); err != nil {
 			return fmt.Errorf("import groups: %w", err)
 		} else {

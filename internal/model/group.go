@@ -20,12 +20,13 @@ type Group struct {
 }
 
 type GroupItem struct {
-	ID        int    `json:"id" gorm:"primaryKey"`
-	GroupID   int    `json:"group_id" gorm:"not null;index:idx_group_channel_model,unique"` // 创建时不携带此字段,更新时需要
-	ChannelID int    `json:"channel_id" gorm:"not null;index:idx_group_channel_model,unique"`
-	ModelName string `json:"model_name" gorm:"not null;index:idx_group_channel_model,unique"`
-	Priority  int    `json:"priority"`
-	Weight    int    `json:"weight"`
+	ID         int    `json:"id" gorm:"primaryKey"`
+	GroupID    int    `json:"group_id" gorm:"not null;index:idx_group_channel_model,unique"` // 创建时不携带此字段,更新时需要
+	ChannelID  int    `json:"channel_id" gorm:"not null;index:idx_group_channel_model,unique"`
+	ModelName  string `json:"model_name" gorm:"not null;index:idx_group_channel_model,unique"`
+	Priority   int    `json:"priority"`
+	Weight     int    `json:"weight" gorm:"default:1"`
+	RetryCount int    `json:"retry_count" gorm:"default:0"`
 }
 
 // GroupUpdateRequest 分组更新请求 - 仅包含变更的数据
@@ -43,17 +44,19 @@ type GroupUpdateRequest struct {
 
 // GroupItemAddRequest 新增 item 请求
 type GroupItemAddRequest struct {
-	ChannelID int    `json:"channel_id" binding:"required"`
-	ModelName string `json:"model_name" binding:"required"`
-	Priority  int    `json:"priority,omitempty"`
-	Weight    int    `json:"weight,omitempty"`
+	ChannelID  int    `json:"channel_id" binding:"required"`
+	ModelName  string `json:"model_name" binding:"required"`
+	Priority   int    `json:"priority,omitempty"`
+	Weight     int    `json:"weight,omitempty"`
+	RetryCount int    `json:"retry_count,omitempty"`
 }
 
 // GroupItemUpdateRequest 更新 item 请求
 type GroupItemUpdateRequest struct {
-	ID       int `json:"id" binding:"required"`
-	Priority int `json:"priority,omitempty"`
-	Weight   int `json:"weight,omitempty"`
+	ID         int  `json:"id" binding:"required"`
+	Priority   *int `json:"priority,omitempty"`
+	Weight     *int `json:"weight,omitempty"`
+	RetryCount *int `json:"retry_count,omitempty"`
 }
 type GroupIDAndLLMName struct {
 	ChannelID int

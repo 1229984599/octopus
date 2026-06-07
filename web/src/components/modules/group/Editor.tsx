@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
-import { Check, ChevronDownIcon, Plus, Search, Sparkles, Trash2 } from 'lucide-react';
+import { Check, ChevronDownIcon, Plus, RefreshCw, Search, Sparkles, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import { useModelChannelList, type LLMChannel } from '@/api/endpoints/model';
@@ -11,12 +11,13 @@ import { Input } from '@/components/ui/input';
 import { Accordion, AccordionContent, AccordionItem } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
 import { getModelIcon } from '@/lib/model-icons';
-import type { GroupMode } from '@/api/endpoints/group';
-import type { SelectedMember } from './ItemList';
+import { useCheckGroupItem, type GroupMode } from '@/api/endpoints/group';
+import type { MemberCheckState, SelectedMember } from './ItemList';
 import { MemberList } from './ItemList';
 import { matchesGroupName, memberKey, normalizeKey, MODE_LABELS } from './utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/animate-ui/components/animate/tooltip';
 import { HelpCircle } from 'lucide-react';
+import { toast } from '@/components/common/Toast';
 
 
 
@@ -177,6 +178,13 @@ function SortSection({
     onReorder,
     onRemove,
     onWeightChange,
+    onRetryCountChange,
+    onCheck,
+    onCheckAll,
+    onDeleteFailed,
+    checkingMemberId,
+    checkingAll,
+    checkResults,
     removingIds,
     showWeight,
     onClear,
@@ -185,15 +193,24 @@ function SortSection({
     onReorder: (members: SelectedMember[]) => void;
     onRemove: (id: string) => void;
     onWeightChange: (id: string, weight: number) => void;
+    onRetryCountChange: (id: string, retryCount: number) => void;
+    onCheck?: (member: SelectedMember) => void;
+    onCheckAll?: () => void;
+    onDeleteFailed?: () => void;
+    checkingMemberId?: string | null;
+    checkingAll?: boolean;
+    checkResults?: Record<string, MemberCheckState>;
     removingIds: Set<string>;
     showWeight: boolean;
     onClear: () => void;
 }) {
     const t = useTranslations('group');
+    const failedCount = Object.values(checkResults ?? {}).filter((result) => !result.ok).length;
+    const checkableCount = members.filter((member) => member.item_id).length;
 
     return (
         <div className="rounded-xl border border-border/50 bg-muted/30 flex flex-col min-h-0">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border/30 bg-muted/50">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-border/30 bg-muted/50">
                 <span className="text-sm font-medium text-foreground">
                     {t('form.items')}
                     {members.length > 0 && (
@@ -202,21 +219,57 @@ function SortSection({
                         </span>
                     )}
                 </span>
-                <button
-                    type="button"
-                    onClick={onClear}
-                    disabled={members.length === 0}
-                    className={cn(
-                        'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors',
-                        members.length === 0
-                            ? 'text-muted-foreground/50 cursor-not-allowed'
-                            : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                <div className="flex flex-wrap items-center gap-1.5">
+                    {onCheckAll && (
+                        <button
+                            type="button"
+                            onClick={onCheckAll}
+                            disabled={checkingAll || checkableCount === 0}
+                            className={cn(
+                                'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors',
+                                checkingAll || checkableCount === 0
+                                    ? 'text-muted-foreground/50 cursor-not-allowed'
+                                    : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                            )}
+                            title={t('form.checkAll')}
+                        >
+                            <RefreshCw className={cn('size-3.5', checkingAll && 'animate-spin')} />
+                            <span>{t('form.checkAll')}</span>
+                        </button>
                     )}
-                    title={t('form.clear')}
-                >
-                    <Trash2 className="size-3.5" />
-                    <span>{t('form.clear')}</span>
-                </button>
+                    {onDeleteFailed && (
+                        <button
+                            type="button"
+                            onClick={onDeleteFailed}
+                            disabled={failedCount === 0}
+                            className={cn(
+                                'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors',
+                                failedCount === 0
+                                    ? 'text-muted-foreground/50 cursor-not-allowed'
+                                    : 'hover:bg-destructive/10 text-destructive'
+                            )}
+                            title={t('form.deleteFailed')}
+                        >
+                            <Trash2 className="size-3.5" />
+                            <span>{t('form.deleteFailed')}</span>
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={onClear}
+                        disabled={members.length === 0}
+                        className={cn(
+                            'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors',
+                            members.length === 0
+                                ? 'text-muted-foreground/50 cursor-not-allowed'
+                                : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                        )}
+                        title={t('form.clear')}
+                    >
+                        <Trash2 className="size-3.5" />
+                        <span>{t('form.clear')}</span>
+                    </button>
+                </div>
             </div>
 
             <div className="flex-1 min-h-0">
@@ -225,6 +278,10 @@ function SortSection({
                     onReorder={onReorder}
                     onRemove={onRemove}
                     onWeightChange={onWeightChange}
+                    onRetryCountChange={onRetryCountChange}
+                    onCheck={onCheck}
+                    checkingMemberId={checkingMemberId}
+                    checkResults={checkResults}
                     removingIds={removingIds}
                     showWeight={showWeight}
                     showConfirmDelete={false}
@@ -235,6 +292,7 @@ function SortSection({
 }
 
 export function GroupEditor({
+    groupId,
     initial,
     submitText,
     submittingText,
@@ -242,6 +300,7 @@ export function GroupEditor({
     onSubmit,
     onCancel,
 }: {
+    groupId?: number;
     initial?: Partial<GroupEditorValues>;
     submitText: string;
     submittingText: string;
@@ -251,6 +310,7 @@ export function GroupEditor({
 }) {
     const t = useTranslations('group');
     const { data: modelChannels = [] } = useModelChannelList();
+    const checkGroupItem = useCheckGroupItem();
 
     const [groupName, setGroupName] = useState(initial?.name ?? '');
     const [matchRegex, setMatchRegex] = useState(initial?.match_regex ?? '');
@@ -259,6 +319,9 @@ export function GroupEditor({
     const [sessionKeepTime, setSessionKeepTime] = useState<number>(initial?.session_keep_time ?? 0);
     const [selectedMembers, setSelectedMembers] = useState<SelectedMember[]>(initial?.members ?? []);
     const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+    const [checkingMemberId, setCheckingMemberId] = useState<string | null>(null);
+    const [checkingAll, setCheckingAll] = useState(false);
+    const [checkResults, setCheckResults] = useState<Record<string, MemberCheckState>>({});
 
     const groupKey = normalizeKey(groupName);
     const regexKey = matchRegex.trim();
@@ -291,7 +354,7 @@ export function GroupEditor({
         const key = memberKey(channel);
         setSelectedMembers((prev) => {
             if (prev.some((m) => m.id === key)) return prev;
-            return [...prev, { ...channel, id: key, weight: 1 }];
+            return [...prev, { ...channel, id: key, weight: 1, retry_count: 0 }];
         });
     }, []);
 
@@ -307,7 +370,7 @@ export function GroupEditor({
             const existing = new Set(prev.map((m) => m.id));
             const toAdd = matchedModelChannels
                 .filter((mc) => !existing.has(memberKey(mc)))
-                .map((mc) => ({ ...mc, id: memberKey(mc), weight: 1 }));
+                .map((mc) => ({ ...mc, id: memberKey(mc), weight: 1, retry_count: 0 }));
             return toAdd.length ? [...prev, ...toAdd] : prev;
         });
     }, [matchedModelChannels]);
@@ -316,8 +379,18 @@ export function GroupEditor({
         setSelectedMembers((prev) => prev.map((m) => m.id === id ? { ...m, weight } : m));
     }, []);
 
+    const handleRetryCountChange = useCallback((id: string, retryCount: number) => {
+        setSelectedMembers((prev) => prev.map((m) => m.id === id ? { ...m, retry_count: retryCount } : m));
+    }, []);
+
     const handleRemoveMember = useCallback((id: string) => {
         setRemovingIds((prev) => new Set(prev).add(id));
+        setCheckResults((prev) => {
+            if (!prev[id]) return prev;
+            const next = { ...prev };
+            delete next[id];
+            return next;
+        });
         setTimeout(() => {
             setSelectedMembers((prev) => prev.filter((m) => m.id !== id));
             setRemovingIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
@@ -327,7 +400,80 @@ export function GroupEditor({
     const handleClearMembers = useCallback(() => {
         setSelectedMembers([]);
         setRemovingIds(new Set());
+        setCheckResults({});
     }, []);
+
+    const runMemberCheck = useCallback(async (member: SelectedMember): Promise<MemberCheckState> => {
+        if (!groupId || !member.item_id) {
+            return { ok: false, message: t('form.checkUnavailable') };
+        }
+        const results = await checkGroupItem.mutateAsync({
+            group_id: groupId,
+            item_id: member.item_id,
+            model: member.name,
+        });
+        const okCount = results.filter((result) => result.ok).length;
+        return {
+            ok: okCount > 0,
+            message: `${okCount}/${results.length}`,
+        };
+    }, [checkGroupItem, groupId, t]);
+
+    const handleCheckMember = useCallback(async (member: SelectedMember) => {
+        setCheckingMemberId(member.id);
+        try {
+            const result = await runMemberCheck(member);
+            setCheckResults((prev) => ({ ...prev, [member.id]: result }));
+            toast.success(result.ok ? t('toast.checkDone') : t('toast.checkFailed'), { description: result.message });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setCheckResults((prev) => ({ ...prev, [member.id]: { ok: false, message } }));
+            toast.error(t('toast.checkFailed'), { description: message });
+        } finally {
+            setCheckingMemberId(null);
+        }
+    }, [runMemberCheck, t]);
+
+    const handleCheckAllMembers = useCallback(async () => {
+        const checkableMembers = selectedMembers.filter((member) => member.item_id);
+        if (checkableMembers.length === 0) return;
+        setCheckingAll(true);
+        const nextResults: Record<string, MemberCheckState> = {};
+        try {
+            for (const member of checkableMembers) {
+                setCheckingMemberId(member.id);
+                try {
+                    nextResults[member.id] = await runMemberCheck(member);
+                } catch (error) {
+                    nextResults[member.id] = {
+                        ok: false,
+                        message: error instanceof Error ? error.message : String(error),
+                    };
+                }
+            }
+            setCheckResults((prev) => ({ ...prev, ...nextResults }));
+            const okCount = Object.values(nextResults).filter((result) => result.ok).length;
+            toast.success(t('toast.checkDone'), { description: `${okCount}/${checkableMembers.length}` });
+        } finally {
+            setCheckingMemberId(null);
+            setCheckingAll(false);
+        }
+    }, [runMemberCheck, selectedMembers, t]);
+
+    const handleDeleteFailedMembers = useCallback(() => {
+        const failedIds = new Set(
+            Object.entries(checkResults)
+                .filter(([, result]) => !result.ok)
+                .map(([id]) => id)
+        );
+        if (failedIds.size === 0) return;
+        setSelectedMembers((prev) => prev.filter((member) => !failedIds.has(member.id)));
+        setCheckResults((prev) => {
+            const next = { ...prev };
+            failedIds.forEach((id) => delete next[id]);
+            return next;
+        });
+    }, [checkResults]);
 
     const isValid = groupKey.length > 0 && selectedMembers.length > 0 && !regexError;
 
@@ -475,6 +621,13 @@ export function GroupEditor({
                                 onReorder={setSelectedMembers}
                                 onRemove={handleRemoveMember}
                                 onWeightChange={handleWeightChange}
+                                onRetryCountChange={handleRetryCountChange}
+                                onCheck={groupId ? handleCheckMember : undefined}
+                                onCheckAll={groupId ? handleCheckAllMembers : undefined}
+                                onDeleteFailed={groupId ? handleDeleteFailedMembers : undefined}
+                                checkingMemberId={checkingMemberId}
+                                checkingAll={checkingAll}
+                                checkResults={checkResults}
                                 removingIds={removingIds}
                                 showWeight={mode === 4}
                                 onClear={handleClearMembers}

@@ -77,8 +77,9 @@ func newRelayRun(c *gin.Context, inboundType llm.APIFormat, inAdapter transforme
 			StartTime:       time.Now(),
 			InternalRequest: internalRequest,
 		},
-		iter:  iter,
-		group: group,
+		iter:       iter,
+		group:      group,
+		failedKeys: make(map[channelKeyRef]struct{}),
 	}, nil
 }
 
@@ -136,12 +137,9 @@ func (r *relayRun) prepareAttempt() (*relayAttempt, error) {
 		return nil, nil
 	}
 
-	usedKey := channel.GetChannelKey()
+	usedKey := r.selectChannelKey(channel)
 	if usedKey.ChannelKey == "" {
 		r.iter.Skip(channel.ID, 0, channel.Name, "no available key")
-		return nil, nil
-	}
-	if r.iter.SkipCircuitBreak(channel.ID, usedKey.ID, channel.Name) {
 		return nil, nil
 	}
 
@@ -165,6 +163,28 @@ func (r *relayRun) prepareAttempt() (*relayAttempt, error) {
 		channel:    channel,
 		usedKey:    usedKey,
 	}, nil
+}
+
+func (r *relayRun) selectChannelKey(channel *dbmodel.Channel) dbmodel.ChannelKey {
+	var retryFallback dbmodel.ChannelKey
+	for _, key := range channel.GetChannelKeyCandidates() {
+		if key.ChannelKey == "" {
+			continue
+		}
+		if _, failed := r.failedKeys[channelKeyRef{channelID: channel.ID, keyID: key.ID}]; failed {
+			if retryFallback.ChannelKey == "" {
+				retryFallback = key
+			}
+			continue
+		}
+		if !r.iter.SkipCircuitBreak(channel.ID, key.ID, channel.Name) {
+			return key
+		}
+	}
+	if retryFallback.ChannelKey != "" && !r.iter.SkipCircuitBreak(channel.ID, retryFallback.ID, channel.Name) {
+		return retryFallback
+	}
+	return dbmodel.ChannelKey{}
 }
 
 // run 统一管理一次通道尝试的完整生命周期。
@@ -198,6 +218,7 @@ func (ra *relayAttempt) run() (bool, error) {
 		WaitTime:      span.Duration().Milliseconds(),
 		RequestFailed: 1,
 	})
+	ra.failedKeys[channelKeyRef{channelID: ra.channel.ID, keyID: ra.usedKey.ID}] = struct{}{}
 	balancer.RecordFailure(ra.channel.ID, ra.usedKey.ID, ra.internalRequest.Model)
 
 	return ra.c.Writer.Written(), fmt.Errorf("channel %s failed: %v", ra.channel.Name, fwdErr)

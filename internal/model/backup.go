@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // DBDump is a full-database JSON export format for Octopus.
 // Import uses incremental semantics (insert new rows, and upsert on certain key-based tables).
@@ -12,11 +15,15 @@ type DBDump struct {
 
 	Channels    []Channel    `json:"channels,omitempty"`
 	ChannelKeys []ChannelKey `json:"channel_keys,omitempty"`
-	Groups      []Group      `json:"groups,omitempty"`
-	GroupItems []GroupItem `json:"group_items,omitempty"`
-	LLMInfos   []LLMInfo   `json:"llm_infos,omitempty"`
-	APIKeys    []APIKey    `json:"api_keys,omitempty"`
-	Settings   []Setting   `json:"settings,omitempty"`
+	// ProxyConfigurations is reserved for compatibility with exports from
+	// deployments that include proxy configuration records. This repository does
+	// not currently have a matching table, so import recognizes but skips it.
+	ProxyConfigurations []json.RawMessage `json:"proxy_configurations,omitempty"`
+	Groups              []Group           `json:"groups,omitempty"`
+	GroupItems          []GroupItem       `json:"group_items,omitempty"`
+	LLMInfos            []LLMInfo         `json:"llm_infos,omitempty"`
+	APIKeys             []APIKey          `json:"api_keys,omitempty"`
+	Settings            []Setting         `json:"settings,omitempty"`
 
 	StatsTotal   []StatsTotal   `json:"stats_total,omitempty"`
 	StatsDaily   []StatsDaily   `json:"stats_daily,omitempty"`

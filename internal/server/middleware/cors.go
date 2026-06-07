@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net/url"
 	"strings"
 
 	"github.com/bestruirui/octopus/internal/model"
@@ -20,6 +21,11 @@ func Cors() gin.HandlerFunc {
 	// - "*": 允许所有来源
 	// - 逗号分隔的域名列表: 只允许指定的域名 (如 "https://example.com,https://example2.com")
 	config.AllowOriginFunc = func(origin string) bool {
+		origin = strings.TrimSpace(origin)
+		if isLoopbackOrigin(origin) {
+			return true
+		}
+
 		allowed, err := op.SettingGetString(model.SettingKeyCORSAllowOrigins)
 		if err != nil {
 			return false
@@ -32,7 +38,6 @@ func Cors() gin.HandlerFunc {
 			return true
 		}
 
-		origin = strings.TrimSpace(origin)
 		if origin == "" {
 			return false
 		}
@@ -58,4 +63,19 @@ func Cors() gin.HandlerFunc {
 		return false
 	}
 	return cors.New(config)
+}
+
+func isLoopbackOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	host := parsed.Hostname()
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }

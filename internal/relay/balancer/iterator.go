@@ -24,7 +24,7 @@ type Iterator struct {
 // 自动处理：策略排序 + 粘性通道提前
 func NewIterator(group model.Group, apiKeyID int, requestModel string) *Iterator {
 	b := GetBalancer(group.Mode)
-	candidates := b.Candidates(group.Items)
+	candidates := expandRetryCandidates(b.Candidates(group.Items))
 
 	stickyIdx := -1
 	if group.SessionKeepTime > 0 {
@@ -51,6 +51,33 @@ func NewIterator(group model.Group, apiKeyID int, requestModel string) *Iterator
 		stickyIdx:  stickyIdx,
 		modelName:  requestModel,
 	}
+}
+
+func expandRetryCandidates(items []model.GroupItem) []model.GroupItem {
+	if len(items) == 0 {
+		return nil
+	}
+
+	total := 0
+	for _, item := range items {
+		repeat := item.RetryCount + 1
+		if repeat < 1 {
+			repeat = 1
+		}
+		total += repeat
+	}
+
+	candidates := make([]model.GroupItem, 0, total)
+	for _, item := range items {
+		repeat := item.RetryCount + 1
+		if repeat < 1 {
+			repeat = 1
+		}
+		for i := 0; i < repeat; i++ {
+			candidates = append(candidates, item)
+		}
+	}
+	return candidates
 }
 
 // Next 移动到下一个候选，返回 false 表示遍历完成

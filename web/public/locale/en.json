@@ -346,7 +346,9 @@
             "updated": "Updated successfully",
             "updateFailed": "Update failed",
             "deleted": "Deleted successfully",
-            "autoAddFailed": "Auto add failed"
+            "autoAddFailed": "Auto add failed",
+            "checkDone": "Check completed",
+            "checkFailed": "Check failed"
         },
         "create": {
             "title": "Create Group",
@@ -380,7 +382,14 @@
             "autoAdd": "Auto Add",
             "clear": "Clear",
             "selectChannel": "Channel",
-            "selectModel": "Model"
+            "selectModel": "Model",
+            "retryCount": "Retry Count",
+            "checkItem": "Check Channel",
+            "checkAll": "Check All",
+            "deleteFailed": "Delete Failed",
+            "checkOk": "OK",
+            "checkBad": "Bad",
+            "checkUnavailable": "This item cannot be checked yet"
         },
         "mode": {
             "roundRobin": "Round Robin",
@@ -471,6 +480,28 @@
             },
             "noBaseUrls": "No Base URLs",
             "noKeys": "No Keys",
+            "keyCheck": {
+                "model": "Check Model",
+                "searchModel": "Search models",
+                "noModels": "No models",
+                "all": "Check All",
+                "selected": "Check Selected",
+                "deleteSelected": "Delete Selected",
+                "disableSelected": "Disable Selected",
+                "disableFailedKeys": "Disable Failed",
+                "deleteInvalid": "Delete 401/403",
+                "modelRequired": "Please select a model to check",
+                "done": "Check completed",
+                "failed": "Check failed",
+                "deleted": "Keys deleted",
+                "deleteFailed": "Delete failed",
+                "disabled": "Keys disabled",
+                "disableFailed": "Disable failed",
+                "ok": "OK",
+                "bad": "Bad",
+                "sorted": "Sort saved",
+                "sortFailed": "Failed to save sort"
+            },
             "metrics": {
                 "totalRequests": "Total Requests",
                 "totalToken": "Total Tokens",
@@ -507,6 +538,10 @@
             "baseUrlDelay": "Delay(ms)",
             "advanced": "Advanced Settings",
             "apiKey": "API Key",
+            "keyModeRoundRobin": "Round Robin",
+            "keyModeRandom": "Random",
+            "keyModeFailover": "Failover",
+            "keyModeWeighted": "Weighted",
             "customHeader": "Custom Headers",
             "customHeaderKey": "Header Key",
             "customHeaderValue": "Header Value",
@@ -541,7 +576,9 @@
             "autoGroupRegex": "Regex",
             "matchRegex": "Match Regex",
             "matchRegexPlaceholder": "Optional: regex pattern to match request model names",
-            "remark": "Remark"
+            "remark": "Remark",
+            "priority": "Priority",
+            "weight": "Weight"
         }
     }
 }

@@ -346,7 +346,9 @@
             "updated": "更新成功",
             "updateFailed": "更新失敗",
             "deleted": "刪除成功",
-            "autoAddFailed": "自動新增失敗"
+            "autoAddFailed": "自動新增失敗",
+            "checkDone": "檢測完成",
+            "checkFailed": "檢測失敗"
         },
         "create": {
             "title": "建立分組",
@@ -380,7 +382,14 @@
             "autoAdd": "自動新增",
             "clear": "清空",
             "selectChannel": "供應源",
-            "selectModel": "模型"
+            "selectModel": "模型",
+            "retryCount": "失敗重試次數",
+            "checkItem": "檢測供應源",
+            "checkAll": "檢測全部",
+            "deleteFailed": "刪除異常",
+            "checkOk": "正常",
+            "checkBad": "異常",
+            "checkUnavailable": "目前項目暫不可檢測"
         },
         "mode": {
             "roundRobin": "輪詢",
@@ -471,6 +480,28 @@
             },
             "noBaseUrls": "暫無 Base URL",
             "noKeys": "暫無金鑰",
+            "keyCheck": {
+                "model": "檢測模型",
+                "searchModel": "搜尋模型",
+                "noModels": "暫無模型",
+                "all": "檢測全部",
+                "selected": "檢測已選",
+                "deleteSelected": "刪除已選",
+                "disableSelected": "停用已選",
+                "disableFailedKeys": "停用異常",
+                "deleteInvalid": "刪除 401/403",
+                "modelRequired": "請選擇檢測模型",
+                "done": "檢測完成",
+                "failed": "檢測失敗",
+                "deleted": "金鑰已刪除",
+                "deleteFailed": "刪除失敗",
+                "disabled": "金鑰已停用",
+                "disableFailed": "停用失敗",
+                "ok": "正常",
+                "bad": "異常",
+                "sorted": "排序已儲存",
+                "sortFailed": "排序儲存失敗"
+            },
             "metrics": {
                 "totalRequests": "總請求",
                 "totalToken": "總 Token",
@@ -507,6 +538,10 @@
             "baseUrlDelay": "延遲(ms)",
             "advanced": "進階設定",
             "apiKey": "API Key",
+            "keyModeRoundRobin": "輪詢",
+            "keyModeRandom": "隨機",
+            "keyModeFailover": "故障轉移",
+            "keyModeWeighted": "加權",
             "customHeader": "自定義 Header",
             "customHeaderKey": "Header Key",
             "customHeaderValue": "Header Value",
@@ -541,7 +576,9 @@
             "autoGroupRegex": "正規比對",
             "matchRegex": "匹配正規",
             "matchRegexPlaceholder": "可選：用於匹配請求模型名稱的正規表示式",
-            "remark": "備註"
+            "remark": "備註",
+            "priority": "優先級",
+            "weight": "權重"
         }
     }
 }

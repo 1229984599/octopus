@@ -37,12 +37,17 @@ interface ToolbarViewOptionsState {
     setModelFilter: (value: ModelFilter) => void;
 }
 
+type PersistedToolbarViewOptionsState = Partial<Pick<
+    ToolbarViewOptionsState,
+    'layouts' | 'sortFields' | 'sortOrders' | 'channelFilter' | 'groupFilter' | 'modelFilter'
+>>;
+
 export const useToolbarViewOptionsStore = create<ToolbarViewOptionsState>()(
     persist(
         (set, get) => ({
             layouts: {},
-            sortFields: {},
-            sortOrders: {},
+            sortFields: { channel: 'created' },
+            sortOrders: { channel: 'desc' },
             channelFilter: 'all',
             groupFilter: 'all',
             modelFilter: 'all',
@@ -52,7 +57,7 @@ export const useToolbarViewOptionsStore = create<ToolbarViewOptionsState>()(
                 set((state) => ({ layouts: { ...state.layouts, [item]: value } }));
             },
 
-            getSortField: (item) => get().sortFields[item] || 'name',
+            getSortField: (item) => get().sortFields[item] || (item === 'channel' ? 'created' : 'name'),
             setSortConfig: (item, field, order) => {
                 set((state) => ({
                     sortFields: { ...state.sortFields, [item]: field },
@@ -60,7 +65,7 @@ export const useToolbarViewOptionsStore = create<ToolbarViewOptionsState>()(
                 }));
             },
 
-            getSortOrder: (item) => (get().sortOrders[item] === 'desc' ? 'desc' : 'asc'),
+            getSortOrder: (item) => get().sortOrders[item] || (item === 'channel' ? 'desc' : 'asc'),
             setSortOrder: (item, value) => {
                 set((state) => ({ sortOrders: { ...state.sortOrders, [item]: value } }));
             },
@@ -71,6 +76,16 @@ export const useToolbarViewOptionsStore = create<ToolbarViewOptionsState>()(
         }),
         {
             name: 'toolbar-view-options-storage',
+            version: 2,
+            migrate: (persistedState, version) => {
+                const state = (persistedState ?? {}) as PersistedToolbarViewOptionsState;
+                if (version >= 2) return state;
+                return {
+                    ...state,
+                    sortFields: { channel: 'created', ...(state.sortFields ?? {}) },
+                    sortOrders: { channel: 'desc', ...(state.sortOrders ?? {}) },
+                };
+            },
             partialize: (state) => ({
                 layouts: state.layouts,
                 sortFields: state.sortFields,

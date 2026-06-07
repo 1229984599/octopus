@@ -151,7 +151,7 @@ export function Card({ channel, stats, layout = 'grid' }: { channel: Channel; st
             </MorphingDialogTrigger>
 
             <MorphingDialogContainer>
-                <MorphingDialogContent className="w-full md:max-w-xl bg-card text-card-foreground px-4 py-2 rounded-3xl max-h-[90vh] overflow-y-auto">
+                <MorphingDialogContent className="w-[calc(100vw-1rem)] sm:w-[calc(100vw-2rem)] md:max-w-4xl xl:max-w-5xl bg-card text-card-foreground px-3 py-2 sm:px-5 rounded-3xl max-h-[92vh] overflow-y-auto">
                     <CardContent channel={channel} stats={stats} />
                 </MorphingDialogContent>
             </MorphingDialogContainer>

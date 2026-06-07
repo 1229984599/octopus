@@ -5,7 +5,7 @@ import {
     MorphingDialogDescription,
     useMorphingDialog,
 } from '@/components/ui/morphing-dialog';
-import { useCreateChannel, ChannelType, AutoGroupType } from '@/api/endpoints/channel';
+import { useCreateChannel, ChannelType, AutoGroupType, GroupMode } from '@/api/endpoints/channel';
 import { useTranslations } from 'next-intl';
 import { ChannelForm, type ChannelFormData } from './Form';
 
@@ -19,11 +19,12 @@ export function CreateDialogContent() {
         custom_header: [],
         channel_proxy: '',
         param_override: '',
-        keys: [{ enabled: true, channel_key: '', remark: '' }],
+        keys: [{ enabled: true, channel_key: '', remark: '', priority: 1, weight: 1 }],
+        key_mode: GroupMode.RoundRobin,
         model: '',
         custom_model: '',
         auto_sync: false,
-        auto_group: AutoGroupType.None,
+        auto_group: AutoGroupType.Regex,
         enabled: true,
         proxy: false,
         match_regex: '',
@@ -38,7 +39,13 @@ export function CreateDialogContent() {
         }));
         const normalizedKeys = formData.keys
             .filter((k) => k.channel_key.trim())
-            .map((k) => ({ enabled: k.enabled, channel_key: k.channel_key, remark: k.remark ?? '' }));
+            .map((k, index) => ({
+                enabled: k.enabled,
+                channel_key: k.channel_key,
+                remark: k.remark ?? '',
+                priority: index + 1,
+                weight: k.weight ?? 1,
+            }));
         const normalizedHeaders = (formData.custom_header ?? [])
             .map((h) => ({ header_key: h.header_key.trim(), header_value: h.header_value }))
             .filter((h) => h.header_key && h.header_value !== '');
@@ -52,6 +59,7 @@ export function CreateDialogContent() {
                 enabled: formData.enabled,
                 base_urls: normalizedBaseUrls,
                 keys: normalizedKeys,
+                key_mode: formData.key_mode,
                 model: formData.model,
                 custom_model: formData.custom_model,
                 proxy: formData.proxy,
@@ -71,11 +79,12 @@ export function CreateDialogContent() {
                         custom_header: [],
                         channel_proxy: '',
                         param_override: '',
-                        keys: [{ enabled: true, channel_key: '', remark: '' }],
+                        keys: [{ enabled: true, channel_key: '', remark: '', priority: 1, weight: 1 }],
+                        key_mode: GroupMode.RoundRobin,
                         model: '',
                         custom_model: '',
                         auto_sync: false,
-                        auto_group: AutoGroupType.None,
+                        auto_group: AutoGroupType.Regex,
                         enabled: true,
                         proxy: false,
                         match_regex: '',

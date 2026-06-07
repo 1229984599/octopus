@@ -44,6 +44,10 @@ func init() {
 		AddRoute(
 			router.NewRoute("/fetch-model", http.MethodPost).
 				Handle(fetchModel),
+		).
+		AddRoute(
+			router.NewRoute("/check-keys", http.MethodPost).
+				Handle(checkChannelKeys),
 		)
 	router.NewGroupRouter("/api/v1/channel").
 		Use(middleware.Auth()).
@@ -160,6 +164,25 @@ func fetchModel(c *gin.Context) {
 		return
 	}
 	resp.Success(c, models)
+}
+
+func checkChannelKeys(c *gin.Context) {
+	var request struct {
+		ID     int    `json:"id" binding:"required"`
+		Model  string `json:"model" binding:"required"`
+		KeyIDs []int  `json:"key_ids,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	channel, err := op.ChannelGet(request.ID, c.Request.Context())
+	if err != nil {
+		resp.Error(c, http.StatusNotFound, err.Error())
+		return
+	}
+	results := helper.CheckChannelKeys(c.Request.Context(), *channel, request.Model, request.KeyIDs)
+	resp.Success(c, results)
 }
 
 func syncChannel(c *gin.Context) {

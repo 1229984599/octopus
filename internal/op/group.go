@@ -7,7 +7,6 @@ import (
 	"github.com/bestruirui/octopus/internal/db"
 	"github.com/bestruirui/octopus/internal/model"
 	"github.com/bestruirui/octopus/internal/utils/cache"
-	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -124,25 +123,34 @@ func GroupUpdate(req *model.GroupUpdateRequest, ctx context.Context) (*model.Gro
 
 	// 批量更新 items
 	if len(req.ItemsToUpdate) > 0 {
-		ids := make([]int, len(req.ItemsToUpdate))
-		priorityCase := "CASE id"
-		weightCase := "CASE id"
-		for i, item := range req.ItemsToUpdate {
-			ids[i] = item.ID
-			priorityCase += fmt.Sprintf(" WHEN %d THEN %d", item.ID, item.Priority)
-			weightCase += fmt.Sprintf(" WHEN %d THEN %d", item.ID, item.Weight)
-		}
-		priorityCase += " END"
-		weightCase += " END"
-
-		if err := tx.Model(&model.GroupItem{}).
-			Where("id IN ? AND group_id = ?", ids, req.ID).
-			Updates(map[string]interface{}{
-				"priority": gorm.Expr(priorityCase),
-				"weight":   gorm.Expr(weightCase),
-			}).Error; err != nil {
-			tx.Rollback()
-			return nil, fmt.Errorf("failed to update items: %w", err)
+		for _, item := range req.ItemsToUpdate {
+			updates := map[string]interface{}{}
+			if item.Priority != nil {
+				updates["priority"] = *item.Priority
+			}
+			if item.Weight != nil {
+				weight := *item.Weight
+				if weight <= 0 {
+					weight = 1
+				}
+				updates["weight"] = weight
+			}
+			if item.RetryCount != nil {
+				retryCount := *item.RetryCount
+				if retryCount < 0 {
+					retryCount = 0
+				}
+				updates["retry_count"] = retryCount
+			}
+			if len(updates) == 0 {
+				continue
+			}
+			if err := tx.Model(&model.GroupItem{}).
+				Where("id = ? AND group_id = ?", item.ID, req.ID).
+				Updates(updates).Error; err != nil {
+				tx.Rollback()
+				return nil, fmt.Errorf("failed to update item %d: %w", item.ID, err)
+			}
 		}
 	}
 
@@ -151,11 +159,12 @@ func GroupUpdate(req *model.GroupUpdateRequest, ctx context.Context) (*model.Gro
 		newItems := make([]model.GroupItem, len(req.ItemsToAdd))
 		for i, item := range req.ItemsToAdd {
 			newItems[i] = model.GroupItem{
-				GroupID:   req.ID,
-				ChannelID: item.ChannelID,
-				ModelName: item.ModelName,
-				Priority:  item.Priority,
-				Weight:    item.Weight,
+				GroupID:    req.ID,
+				ChannelID:  item.ChannelID,
+				ModelName:  item.ModelName,
+				Priority:   item.Priority,
+				Weight:     normalizePositive(item.Weight, 1),
+				RetryCount: normalizeNonNegative(item.RetryCount),
 			}
 		}
 		if err := tx.Create(&newItems).Error; err != nil {
@@ -178,6 +187,20 @@ func GroupUpdate(req *model.GroupUpdateRequest, ctx context.Context) (*model.Gro
 		groupMap.Del(oldName)
 	}
 	return &group, nil
+}
+
+func normalizePositive(value, fallback int) int {
+	if value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func normalizeNonNegative(value int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
 }
 
 func GroupDel(id int, ctx context.Context) error {
@@ -261,11 +284,12 @@ func GroupItemBatchAdd(groupID int, items []model.GroupIDAndLLMName, ctx context
 	newItems := make([]model.GroupItem, 0, len(uniq))
 	for _, it := range uniq {
 		newItems = append(newItems, model.GroupItem{
-			GroupID:   groupID,
-			ChannelID: it.ChannelID,
-			ModelName: it.ModelName,
-			Priority:  nextPriority,
-			Weight:    1,
+			GroupID:    groupID,
+			ChannelID:  it.ChannelID,
+			ModelName:  it.ModelName,
+			Priority:   nextPriority,
+			Weight:     1,
+			RetryCount: 0,
 		})
 		nextPriority++
 	}
@@ -284,7 +308,7 @@ func GroupItemBatchAdd(groupID int, items []model.GroupIDAndLLMName, ctx context
 
 func GroupItemUpdate(item *model.GroupItem, ctx context.Context) error {
 	if err := db.GetDB().WithContext(ctx).Model(item).
-		Select("ModelName", "Priority", "Weight").
+		Select("ModelName", "Priority", "Weight", "RetryCount").
 		Updates(item).Error; err != nil {
 		return err
 	}

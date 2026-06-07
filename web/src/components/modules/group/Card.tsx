@@ -49,6 +49,7 @@ function EditDialogContent({ group, displayMembers, isSubmitting, onSubmit }: Ed
             <MorphingDialogDescription className="flex-1 min-h-0 overflow-hidden">
                 <GroupEditor
                     key={`edit-group-${group.id}`}
+                    groupId={group.id}
                     initial={{
                         name: group.name,
                         match_regex: group.match_regex ?? '',
@@ -77,7 +78,7 @@ export function GroupCard({ group }: { group: Group }) {
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [members, setMembers] = useState<SelectedMember[]>([]);
     const isDragging = useRef(false);
-    const weightTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const memberUpdateTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
     const membersRef = useRef<SelectedMember[]>([]);
 
     const channelNameByKey = useMemo(() => buildChannelNameByModelKey(modelChannels), [modelChannels]);
@@ -100,12 +101,16 @@ export function GroupCard({ group }: { group: Group }) {
                 channel_name: channelNameByKey.get(modelChannelKey(item.channel_id, item.model_name)) ?? `Channel ${item.channel_id}`,
                 item_id: item.id,
                 weight: item.weight,
+                retry_count: item.retry_count ?? 0,
             })),
         [group.items, channelNameByKey, enabledByKey]
     );
 
     useEffect(() => {
-        if (!isDragging.current) setMembers([...displayMembers]);
+        if (isDragging.current) return;
+        const nextMembers = [...displayMembers];
+        const frame = requestAnimationFrame(() => setMembers(nextMembers));
+        return () => cancelAnimationFrame(frame);
     }, [displayMembers]);
 
     useEffect(() => {
@@ -113,7 +118,11 @@ export function GroupCard({ group }: { group: Group }) {
     }, [members]);
 
     useEffect(() => {
-        return () => { if (weightTimerRef.current) clearTimeout(weightTimerRef.current); };
+        const timers = memberUpdateTimersRef.current;
+        return () => {
+            timers.forEach((timer) => clearTimeout(timer));
+            timers.clear();
+        };
     }, []);
 
     const onSuccess = useCallback(() => toast.success(t('toast.updated')), [t]);
@@ -146,7 +155,12 @@ export function GroupCard({ group }: { group: Group }) {
                 const origPriority = priorityByItemId.get(member.item_id);
                 return origPriority !== undefined && origPriority !== newPriority;
             })
-            .map(({ member, newPriority }) => ({ id: member.item_id!, priority: newPriority, weight: member.weight ?? 1 }));
+            .map(({ member, newPriority }) => ({
+                id: member.item_id!,
+                priority: newPriority,
+                weight: member.weight ?? 1,
+                retry_count: member.retry_count ?? 0,
+            }));
         if (itemsToUpdate.length > 0) updateGroup.mutate({ id: group.id!, items_to_update: itemsToUpdate }, { onSuccess, onError });
     }, [group.id, priorityByItemId, updateGroup, onSuccess, onError]);
 
@@ -155,31 +169,51 @@ export function GroupCard({ group }: { group: Group }) {
         if (member?.item_id !== undefined) updateGroup.mutate({ id: group.id!, items_to_delete: [member.item_id] }, { onSuccess, onError });
     }, [members, group.id, updateGroup, onSuccess, onError]);
 
-    const handleWeightChange = useCallback((id: string, weight: number) => {
-        setMembers((prev) => prev.map((m) => m.id === id ? { ...m, weight } : m));
-        if (weightTimerRef.current) clearTimeout(weightTimerRef.current);
-        weightTimerRef.current = setTimeout(() => {
+    const queueMemberUpdate = useCallback((id: string) => {
+        const previous = memberUpdateTimersRef.current.get(id);
+        if (previous) clearTimeout(previous);
+        const timer = setTimeout(() => {
+            memberUpdateTimersRef.current.delete(id);
             const member = membersRef.current.find((m) => m.id === id);
             if (!member?.item_id) return;
             const priority = priorityByItemId.get(member.item_id);
             if (!priority) return;
             updateGroup.mutate(
-                { id: group.id!, items_to_update: [{ id: member.item_id, priority, weight }] },
+                {
+                    id: group.id!,
+                    items_to_update: [{
+                        id: member.item_id,
+                        priority,
+                        weight: member.weight ?? 1,
+                        retry_count: member.retry_count ?? 0,
+                    }],
+                },
                 { onSuccess, onError }
             );
         }, 500);
+        memberUpdateTimersRef.current.set(id, timer);
     }, [group.id, priorityByItemId, updateGroup, onSuccess, onError]);
+
+    const handleWeightChange = useCallback((id: string, weight: number) => {
+        setMembers((prev) => prev.map((m) => m.id === id ? { ...m, weight } : m));
+        queueMemberUpdate(id);
+    }, [queueMemberUpdate]);
+
+    const handleRetryCountChange = useCallback((id: string, retryCount: number) => {
+        setMembers((prev) => prev.map((m) => m.id === id ? { ...m, retry_count: retryCount } : m));
+        queueMemberUpdate(id);
+    }, [queueMemberUpdate]);
 
     const handleSubmitEdit = useCallback((values: GroupEditorValues, onDone?: () => void) => {
         if (!group.id) return;
 
         const originalItems = [...(group.items || [])].sort((a, b) => a.priority - b.priority);
-        const originalById = new Map<number, { priority: number; weight: number }>();
+        const originalById = new Map<number, { priority: number; weight: number; retry_count: number }>();
         const originalIds = new Set<number>();
         originalItems.forEach((it) => {
             if (typeof it.id === 'number') {
                 originalIds.add(it.id);
-                originalById.set(it.id, { priority: it.priority, weight: it.weight });
+                originalById.set(it.id, { priority: it.priority, weight: it.weight, retry_count: it.retry_count ?? 0 });
             }
         });
 
@@ -196,6 +230,7 @@ export function GroupCard({ group }: { group: Group }) {
                 model_name: m.name,
                 priority,
                 weight: m.weight ?? 1,
+                retry_count: m.retry_count ?? 0,
             }));
 
         const items_to_update = values.members
@@ -205,11 +240,12 @@ export function GroupCard({ group }: { group: Group }) {
                 const id = m.item_id!;
                 const orig = originalById.get(id);
                 const weight = m.weight ?? 1;
+                const retry_count = m.retry_count ?? 0;
                 if (!orig) return null;
-                if (orig.priority === priority && orig.weight === weight) return null;
-                return { id, priority, weight };
+                if (orig.priority === priority && orig.weight === weight && orig.retry_count === retry_count) return null;
+                return { id, priority, weight, retry_count };
             })
-            .filter((x): x is { id: number; priority: number; weight: number } => x !== null);
+            .filter((x): x is { id: number; priority: number; weight: number; retry_count: number } => x !== null);
 
         const payload: GroupUpdateRequest = { id: group.id };
         const nextName = values.name.trim();
@@ -343,6 +379,7 @@ export function GroupCard({ group }: { group: Group }) {
                     onReorder={setMembers}
                     onRemove={handleRemoveMember}
                     onWeightChange={handleWeightChange}
+                    onRetryCountChange={handleRetryCountChange}
                     onDragStart={handleDragStart}
                     onDrop={handleDropReorder}
                     onDragFinish={handleDragFinish}

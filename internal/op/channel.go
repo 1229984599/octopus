@@ -26,6 +26,13 @@ func ChannelList(ctx context.Context) ([]model.Channel, error) {
 }
 
 func ChannelCreate(channel *model.Channel, ctx context.Context) error {
+	if channel.KeyMode == 0 {
+		channel.KeyMode = model.GroupModeRoundRobin
+	}
+	for i := range channel.Keys {
+		channel.Keys[i].Priority = normalizePositive(channel.Keys[i].Priority, i+1)
+		channel.Keys[i].Weight = normalizePositive(channel.Keys[i].Weight, 1)
+	}
 	if err := db.GetDB().WithContext(ctx).Create(channel).Error; err != nil {
 		return err
 	}
@@ -141,6 +148,10 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 		selectFields = append(selectFields, "base_urls")
 		updates.BaseUrls = *req.BaseUrls
 	}
+	if req.KeyMode != nil {
+		selectFields = append(selectFields, "key_mode")
+		updates.KeyMode = *req.KeyMode
+	}
 	if req.Model != nil {
 		selectFields = append(selectFields, "model")
 		updates.Model = *req.Model
@@ -207,6 +218,12 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 			if ku.Remark != nil {
 				updates["remark"] = *ku.Remark
 			}
+			if ku.Priority != nil {
+				updates["priority"] = normalizePositive(*ku.Priority, 1)
+			}
+			if ku.Weight != nil {
+				updates["weight"] = normalizePositive(*ku.Weight, 1)
+			}
 			if len(updates) == 0 {
 				continue
 			}
@@ -228,6 +245,8 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 				Enabled:    ka.Enabled,
 				ChannelKey: ka.ChannelKey,
 				Remark:     ka.Remark,
+				Priority:   normalizePositive(ka.Priority, len(newKeys)+1),
+				Weight:     normalizePositive(ka.Weight, 1),
 			})
 		}
 		if err := tx.Create(&newKeys).Error; err != nil {

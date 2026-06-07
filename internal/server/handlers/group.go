@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/bestruirui/octopus/internal/helper"
 	"github.com/bestruirui/octopus/internal/model"
 	"github.com/bestruirui/octopus/internal/op"
 	"github.com/bestruirui/octopus/internal/server/middleware"
@@ -32,6 +33,10 @@ func init() {
 		AddRoute(
 			router.NewRoute("/delete/:id", http.MethodDelete).
 				Handle(deleteGroup),
+		).
+		AddRoute(
+			router.NewRoute("/check-item", http.MethodPost).
+				Handle(checkGroupItem),
 		)
 	// AddRoute(
 	// 	router.NewRoute("/auto-add-item", http.MethodPost).
@@ -101,6 +106,45 @@ func deleteGroup(c *gin.Context) {
 		return
 	}
 	resp.Success(c, "group deleted successfully")
+}
+
+func checkGroupItem(c *gin.Context) {
+	var request struct {
+		GroupID int    `json:"group_id" binding:"required"`
+		ItemID  int    `json:"item_id" binding:"required"`
+		Model   string `json:"model,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	group, err := op.GroupGet(request.GroupID, c.Request.Context())
+	if err != nil {
+		resp.Error(c, http.StatusNotFound, err.Error())
+		return
+	}
+	var item *model.GroupItem
+	for i := range group.Items {
+		if group.Items[i].ID == request.ItemID {
+			item = &group.Items[i]
+			break
+		}
+	}
+	if item == nil {
+		resp.Error(c, http.StatusNotFound, "group item not found")
+		return
+	}
+	channel, err := op.ChannelGet(item.ChannelID, c.Request.Context())
+	if err != nil {
+		resp.Error(c, http.StatusNotFound, err.Error())
+		return
+	}
+	modelName := request.Model
+	if modelName == "" {
+		modelName = item.ModelName
+	}
+	results := helper.CheckChannelKeys(c.Request.Context(), *channel, modelName, nil)
+	resp.Success(c, results)
 }
 
 // func autoAddGroupItem(c *gin.Context) {
