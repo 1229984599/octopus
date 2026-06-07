@@ -54,7 +54,9 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Build
-        run: bash scripts/build.sh release
+        run: |
+          sed -i 's/\r$//' scripts/build.sh scripts/updatePrice.py
+          bash scripts/build.sh release
 
       - name: Get latest tag
         id: tag
