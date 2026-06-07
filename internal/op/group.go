@@ -60,9 +60,16 @@ func GroupGetEnabledMap(name string, ctx context.Context) (model.Group, error) {
 }
 
 func GroupCreate(group *model.Group, ctx context.Context) error {
+	autoCheck := group.AutoCheck
 	if err := db.GetDB().WithContext(ctx).Create(group).Error; err != nil {
 		return err
 	}
+	if err := db.GetDB().WithContext(ctx).Model(&model.Group{}).
+		Where("id = ?", group.ID).
+		Update("auto_check", autoCheck).Error; err != nil {
+		return err
+	}
+	group.AutoCheck = autoCheck
 	groupCache.Set(group.ID, *group)
 	groupMap.Set(group.Name, *group)
 	return nil
@@ -104,6 +111,10 @@ func GroupUpdate(req *model.GroupUpdateRequest, ctx context.Context) (*model.Gro
 	if req.SessionKeepTime != nil {
 		selectFields = append(selectFields, "session_keep_time")
 		updates.SessionKeepTime = *req.SessionKeepTime
+	}
+	if req.AutoCheck != nil {
+		selectFields = append(selectFields, "auto_check")
+		updates.AutoCheck = *req.AutoCheck
 	}
 
 	if len(selectFields) > 0 {
@@ -327,6 +338,21 @@ func GroupItemDel(id int, ctx context.Context) error {
 	}
 
 	return groupRefreshCacheByID(item.GroupID, ctx)
+}
+
+func GroupItemBatchDel(groupID int, itemIDs []int, ctx context.Context) error {
+	if len(itemIDs) == 0 {
+		return nil
+	}
+	if _, ok := groupCache.Get(groupID); !ok {
+		return fmt.Errorf("group not found")
+	}
+	if err := db.GetDB().WithContext(ctx).
+		Where("id IN ? AND group_id = ?", itemIDs, groupID).
+		Delete(&model.GroupItem{}).Error; err != nil {
+		return fmt.Errorf("failed to delete group items: %w", err)
+	}
+	return groupRefreshCacheByID(groupID, ctx)
 }
 
 // GroupItemBatchDelByChannelAndModels 根据渠道ID和模型名称批量删除分组项

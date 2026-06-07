@@ -16,6 +16,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ban, Check, GripVertical, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { CheckResultDetail } from '@/components/common/CheckResultDetail';
 
 export interface ChannelKeyFormItem {
     id?: number;
@@ -43,6 +44,7 @@ export interface ChannelFormData {
     enabled: boolean;
     proxy: boolean;
     auto_sync: boolean;
+    auto_check: boolean;
     auto_group: AutoGroupType;
     match_regex: string;
 }
@@ -709,18 +711,11 @@ export function ChannelForm({
                                     </Badge>
                                 )}
                                 {typeof k.id === 'number' && checkResults[k.id] && (
-                                    <Badge
-                                        variant="secondary"
-                                        className={cn(
-                                            "h-5 px-1.5 text-[10px]",
-                                            checkResults[k.id].ok
-                                                ? "bg-green-500/15 text-green-700 dark:text-green-400"
-                                                : "bg-red-500/15 text-red-700 dark:text-red-400"
-                                        )}
-                                        title={checkResults[k.id].error}
-                                    >
-                                        {checkResults[k.id].ok ? keyT('ok') : keyT('bad')}
-                                    </Badge>
+                                    <CheckResultDetail
+                                        ok={checkResults[k.id].ok}
+                                        label={checkResults[k.id].ok ? keyT('ok') : keyT('bad')}
+                                        detail={checkResults[k.id].error}
+                                    />
                                 )}
                                 {typeof k.total_cost === 'number' && (
                                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
@@ -986,6 +981,13 @@ export function ChannelForm({
                             onCheckedChange={(checked) => onFormDataChange({ ...formData, auto_sync: checked })}
                         />
                         <span className="text-sm text-card-foreground">{t('autoSync')}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <Switch
+                            checked={formData.auto_check}
+                            onCheckedChange={(checked) => onFormDataChange({ ...formData, auto_check: checked })}
+                        />
+                        <span className="text-sm text-card-foreground">{t('autoCheck')}</span>
                     </label>
                 </div>
             </div>

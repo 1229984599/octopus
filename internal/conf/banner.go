@@ -3,7 +3,6 @@ package conf
 import (
 	"fmt"
 	"strings"
-	"time"
 )
 
 const Banner = `
@@ -49,34 +48,8 @@ func PrintBanner() {
 	if IsDebug() {
 		printInfo("Mode", "Debug", Red)
 	}
-	printInfo("Version", Version, Green)
-	printInfo("Commit", Commit[:min(8, len(Commit))], Yellow)
-	printInfo("Build Time", formatDate(BuildTime), Blue)
-	printInfo("Built By", Author, Purple)
-	printInfo("Repo", Repo, Cyan)
 
 	fmt.Print(Dim)
 	fmt.Println(strings.Repeat("═", 60))
 	fmt.Print(Reset)
-}
-
-func formatDate(date string) string {
-	if date == "unknown" || date == "" {
-		return "unknown"
-	}
-
-	layouts := []string{
-		"2006-01-02T15:04:05Z",
-		"2006-01-02 15:04:05",
-		"2006-01-02",
-		time.RFC3339,
-	}
-
-	for _, layout := range layouts {
-		if t, err := time.Parse(layout, date); err == nil {
-			return t.Format("2006-01-02 15:04")
-		}
-	}
-
-	return date
 }

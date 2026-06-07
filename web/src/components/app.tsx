@@ -2,7 +2,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from "motion/react"
 import { useAuth } from '@/api/endpoints/user';
 import { LoginForm } from '@/components/modules/login';
 import { APIKeyDashboard } from '@/components/modules/apikey-dashboard';
@@ -11,7 +10,6 @@ import { NavBar, useNavStore } from '@/components/modules/navbar';
 import { useTranslations } from 'next-intl'
 import Logo, { LOGO_DRAW_END_MS } from '@/components/modules/logo';
 import { Toolbar } from '@/components/modules/toolbar';
-import { ENTRANCE_VARIANTS } from '@/lib/animations/fluid-transitions';
 import { useQueryClient } from '@tanstack/react-query';
 import { CONTENT_MAP } from '@/route';
 import { apiClient } from '@/api/client';
@@ -23,7 +21,7 @@ function timeout(ms: number) {
 
 export function AppContainer() {
     const { isAuthenticated, isAPIKeyAuth, isLoading: authLoading } = useAuth();
-    const { activeItem, direction } = useNavStore();
+    const { activeItem } = useNavStore();
     const t = useTranslations('navbar');
     const queryClient = useQueryClient();
 
@@ -188,28 +186,20 @@ export function AppContainer() {
     // API Key 认证模式 - 显示 API Key Dashboard
     if (isAPIKeyAuth) {
         return (
-            <AnimatePresence mode="wait">
-                <APIKeyDashboard key="apikey-dashboard" />
-            </AnimatePresence>
+            <APIKeyDashboard />
         );
     }
 
     // 登录页面
     if (!isAuthenticated) {
         return (
-            <AnimatePresence mode="wait">
-                <LoginForm key="login" />
-            </AnimatePresence>
+            <LoginForm />
         );
     }
 
     // 主界面
     return (
-        <motion.div
-            key="main-app"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3 }}
+        <div
             className="mx-auto flex h-dvh max-w-6xl flex-col overflow-hidden px-3 md:grid md:grid-cols-[auto_1fr] md:gap-6 md:px-6"
         >
             <NavBar />
@@ -217,55 +207,18 @@ export function AppContainer() {
                 <header className="my-6 flex flex-none items-center gap-x-2 px-2">
                     <Logo size={48} />
                     <div className="flex-1 overflow-hidden">
-                        <AnimatePresence mode="wait" custom={direction}>
-                            <motion.div
-                                key={activeItem}
-                                custom={direction}
-                                variants={{
-                                    initial: (direction: number) => ({
-                                        y: 32 * direction,
-                                        opacity: 0
-                                    }),
-                                    animate: {
-                                        y: 0,
-                                        opacity: 1
-                                    },
-                                    exit: (direction: number) => ({
-                                        y: -32 * direction,
-                                        opacity: 0
-                                    })
-                                }}
-                                initial="initial"
-                                animate="animate"
-                                exit="exit"
-                                transition={{ duration: 0.3 }}
-                                className="flex items-center"
-                            >
-                                <span className="text-3xl font-bold mt-1">{t(activeItem)}</span>
-                            </motion.div>
-                        </AnimatePresence>
+                        <div className="flex items-center">
+                            <span className="text-3xl font-bold mt-1">{t(activeItem)}</span>
+                        </div>
                     </div>
                     <div className="ml-auto">
                         <Toolbar />
                     </div>
                 </header>
-                <AnimatePresence mode="wait" initial={false}>
-                    <motion.div
-                        key={activeItem}
-                        variants={ENTRANCE_VARIANTS.content}
-                        initial="initial"
-                        animate="animate"
-                        exit={{
-                            opacity: 0,
-                            scale: 0.98,
-                        }}
-                        transition={{ duration: 0.25 }}
-                        className="h-full min-h-0 flex-1"
-                    >
-                        <ContentLoader activeRoute={activeItem} />
-                    </motion.div>
-                </AnimatePresence>
+                <div className="h-full min-h-0 flex-1">
+                    <ContentLoader activeRoute={activeItem} />
+                </div>
             </main>
-        </motion.div>
+        </div>
     );
 }

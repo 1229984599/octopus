@@ -5,7 +5,6 @@ import { useTheme } from 'next-themes';
 import { toast } from '@/components/common/Toast';
 import { useAPIKeyDashboardStats } from '@/api/endpoints/apikey';
 import { useAuthStore } from '@/api/endpoints/user';
-import { useSettingStore } from '@/stores/setting';
 import { AnimatedNumber } from '@/components/common/AnimatedNumber';
 import Logo from '@/components/modules/logo';
 import { PageWrapper } from '@/components/common/PageWrapper';
@@ -23,10 +22,8 @@ import {
     LogOut,
     Calendar,
     Wallet,
-    Copy,
     Sun,
     Moon,
-    Languages,
     Zap,
     Layers,
     Clock
@@ -40,7 +37,6 @@ export function APIKeyDashboard() {
     const { data, error } = useAPIKeyDashboardStats();
     const { logout } = useAuthStore();
     const { theme, setTheme } = useTheme();
-    const { locale, setLocale } = useSettingStore();
     const [, copyToClipboard] = useCopyToClipboard();
 
     const copyWithToast = useCallback(
@@ -101,11 +97,6 @@ export function APIKeyDashboard() {
     ));
 
     const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
-    const toggleLanguage = () => {
-        if (locale === 'zh_hans') setLocale('zh_hant');
-        else if (locale === 'zh_hant') setLocale('en');
-        else setLocale('zh_hans');
-    };
 
     return (
         <div className="mx-auto max-w-6xl px-3 md:px-6">
@@ -117,9 +108,6 @@ export function APIKeyDashboard() {
                     <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-xl hover:bg-accent">
                         <Sun className="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
                         <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={toggleLanguage} className="rounded-xl hover:bg-accent">
-                        <Languages className="size-4" />
                     </Button>
                     <div className="w-px h-6 bg-border mx-1" />
                     <Button variant="ghost" size="icon" onClick={logout} className="rounded-xl hover:bg-destructive/10 hover:text-destructive">

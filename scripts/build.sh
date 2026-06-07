@@ -15,18 +15,8 @@ readonly APP_NAME="octopus"
 readonly MAIN_DIR="./"
 readonly OUTPUT_DIR="build"
 
-# Build metadata
-readonly BUILD_TIME="$(TZ='Asia/Shanghai' date +'%F %T %z')"
-readonly GIT_AUTHOR="bestrui"
-readonly GIT_VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')"
-readonly COMMIT_ID="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-
 # Build flags
-readonly LDFLAGS="-X 'github.com/bestruirui/octopus/internal/conf.Version=${GIT_VERSION}' \
-                  -X 'github.com/bestruirui/octopus/internal/conf.BuildTime=${BUILD_TIME}' \
-                  -X 'github.com/bestruirui/octopus/internal/conf.Author=${GIT_AUTHOR}' \
-                  -X 'github.com/bestruirui/octopus/internal/conf.Commit=${COMMIT_ID}' \
-                  -s -w"
+readonly LDFLAGS="-s -w"
 
 # =============================================================================
 # Utility Functions
@@ -223,7 +213,7 @@ build_frontend() {
 
     # Build the project
     log_info "Building frontend project..."
-    if ! NEXT_PUBLIC_APP_VERSION="$GIT_VERSION" pnpm run build; then
+    if ! pnpm run build; then
         log_error "Failed to build frontend project"
         cd ..
         return 1
@@ -521,7 +511,7 @@ main() {
         fi
 
         log_step "Starting single platform build"
-        echo "📦 Building ${APP_NAME} ${GIT_VERSION} (${COMMIT_ID}) for ${os}/${arch}"
+        echo "📦 Building ${APP_NAME} for ${os}/${arch}"
         echo ""
 
         # Setup
@@ -555,7 +545,7 @@ main() {
         ;;
     "release")
         log_step "Starting release build"
-        echo "📦 Building ${APP_NAME} ${GIT_VERSION} (${COMMIT_ID})"
+        echo "📦 Building ${APP_NAME}"
         echo ""
 
         # Setup

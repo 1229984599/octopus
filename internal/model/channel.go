@@ -36,6 +36,7 @@ type Channel struct {
 	CustomModel   string         `json:"custom_model"`
 	Proxy         bool           `json:"proxy" gorm:"default:false"`
 	AutoSync      bool           `json:"auto_sync" gorm:"default:false"`
+	AutoCheck     bool           `json:"auto_check" gorm:"default:true"`
 	AutoGroup     AutoGroupType  `json:"auto_group" gorm:"default:0"`
 	CustomHeader  []CustomHeader `json:"custom_header" gorm:"serializer:json"`
 	ParamOverride *string        `json:"param_override"`
@@ -48,7 +49,8 @@ func (c *Channel) UnmarshalJSON(data []byte) error {
 	type channelAlias Channel
 	var payload struct {
 		channelAlias
-		Type json.RawMessage `json:"type"`
+		Type      json.RawMessage `json:"type"`
+		AutoCheck *bool           `json:"auto_check"`
 	}
 
 	if err := json.Unmarshal(data, &payload); err != nil {
@@ -56,6 +58,11 @@ func (c *Channel) UnmarshalJSON(data []byte) error {
 	}
 
 	*c = Channel(payload.channelAlias)
+	if payload.AutoCheck != nil {
+		c.AutoCheck = *payload.AutoCheck
+	} else {
+		c.AutoCheck = true
+	}
 	if len(payload.Type) == 0 || string(payload.Type) == "null" {
 		return nil
 	}
@@ -139,6 +146,7 @@ type ChannelUpdateRequest struct {
 	CustomModel   *string         `json:"custom_model,omitempty"`
 	Proxy         *bool           `json:"proxy,omitempty"`
 	AutoSync      *bool           `json:"auto_sync,omitempty"`
+	AutoCheck     *bool           `json:"auto_check,omitempty"`
 	AutoGroup     *AutoGroupType  `json:"auto_group,omitempty"`
 	CustomHeader  *[]CustomHeader `json:"custom_header,omitempty"`
 	ChannelProxy  *string         `json:"channel_proxy,omitempty"`

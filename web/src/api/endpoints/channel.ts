@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { formatCount, formatMoney, formatTime } from '@/lib/utils';
 import { StatsChannel, type StatsMetricsFormatted } from './stats';
 import { GroupMode } from './group';
+import { TaskName } from './setting';
 
 export { GroupMode };
 /**
@@ -66,6 +67,7 @@ export type Channel = {
     custom_model: string;
     proxy: boolean;
     auto_sync: boolean;
+    auto_check: boolean;
     auto_group: AutoGroupType;
     custom_header: CustomHeader[];
     param_override?: string | null;
@@ -104,6 +106,7 @@ export type CreateChannelRequest = {
     custom_model?: string;
     proxy?: boolean;
     auto_sync?: boolean;
+    auto_check?: boolean;
     auto_group?: AutoGroupType;
     custom_header?: CustomHeader[];
     channel_proxy?: string | null;
@@ -125,6 +128,7 @@ export type UpdateChannelRequest = {
     custom_model?: string;
     proxy?: boolean;
     auto_sync?: boolean;
+    auto_check?: boolean;
     auto_group?: AutoGroupType;
     custom_header?: CustomHeader[];
     channel_proxy?: string | null;
@@ -397,6 +401,7 @@ export function useSyncChannel() {
         onSuccess: () => {
             logger.log('渠道同步成功');
             queryClient.invalidateQueries({ queryKey: ['channels', 'last-sync-time'] });
+            queryClient.invalidateQueries({ queryKey: ['settings', 'task-status', TaskName.SyncLLM] });
         },
         onError: (error) => {
             logger.error('渠道同步失败:', error);

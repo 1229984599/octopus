@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -28,6 +29,27 @@ func init() {
 			router.NewRoute("/set", http.MethodPost).
 				Use(middleware.RequireJSON()).
 				Handle(setSetting),
+		).
+		AddRoute(
+			router.NewRoute("/task-status", http.MethodGet).
+				Handle(getTaskStatus),
+		).
+		AddRoute(
+			router.NewRoute("/auto-check/run", http.MethodPost).
+				Handle(runAutoCheck),
+		).
+		AddRoute(
+			router.NewRoute("/auto-check/status", http.MethodGet).
+				Handle(getAutoCheckStatus),
+		).
+		AddRoute(
+			router.NewRoute("/auto-check/cancel", http.MethodPost).
+				Handle(cancelAutoCheck),
+		).
+		AddRoute(
+			router.NewRoute("/auto-check/test-dingtalk", http.MethodPost).
+				Use(middleware.RequireJSON()).
+				Handle(testAutoCheckDingTalk),
 		).
 		AddRoute(
 			router.NewRoute("/export", http.MethodGet).
@@ -70,15 +92,77 @@ func setSetting(c *gin.Context) {
 			return
 		}
 		task.Update(string(setting.Key), time.Duration(hours)*time.Hour)
-	case model.SettingKeySyncLLMInterval:
-		hours, err := strconv.Atoi(setting.Value)
-		if err != nil {
+	case model.SettingKeySyncLLMCron:
+		if err := task.UpdateCron(task.TaskSyncLLM, setting.Value); err != nil {
 			resp.Error(c, http.StatusBadRequest, err.Error())
 			return
 		}
-		task.Update(string(setting.Key), time.Duration(hours)*time.Hour)
+	case model.SettingKeyAutoCheckCron:
+		task.UpdateAutoHealthCheckTask()
 	}
 	resp.Success(c, setting)
+}
+
+func getTaskStatus(c *gin.Context) {
+	name := c.Query("name")
+	if strings.TrimSpace(name) == "" {
+		resp.Error(c, http.StatusBadRequest, "missing task name")
+		return
+	}
+	status, ok := task.GetStatus(name)
+	if !ok {
+		resp.Error(c, http.StatusNotFound, "task not found")
+		return
+	}
+	resp.Success(c, status)
+}
+
+func runAutoCheck(c *gin.Context) {
+	if err := task.StartAutoHealthCheckTask("手动检测"); err != nil {
+		if errors.Is(err, task.ErrAutoHealthCheckRunning) {
+			resp.Error(c, http.StatusConflict, "自动检测任务正在运行")
+			return
+		}
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := task.MarkRunNow(task.TaskAutoCheck); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, nil)
+}
+
+func getAutoCheckStatus(c *gin.Context) {
+	resp.Success(c, task.GetAutoHealthCheckStatus())
+}
+
+func cancelAutoCheck(c *gin.Context) {
+	if err := task.CancelAutoHealthCheckTask(); err != nil {
+		if errors.Is(err, task.ErrAutoHealthCheckNotRunning) {
+			resp.Error(c, http.StatusConflict, "当前没有正在运行的自动检测任务")
+			return
+		}
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, nil)
+}
+
+func testAutoCheckDingTalk(c *gin.Context) {
+	var request struct {
+		Webhook string `json:"webhook"`
+		Secret  string `json:"secret"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	if err := task.TestAutoHealthCheckDingTalk(c.Request.Context(), request.Webhook, request.Secret); err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	resp.Success(c, nil)
 }
 
 func exportDB(c *gin.Context) {

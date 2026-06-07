@@ -15,14 +15,70 @@ export const SettingKey = {
     ProxyURL: 'proxy_url',
     StatsSaveInterval: 'stats_save_interval',
     ModelInfoUpdateInterval: 'model_info_update_interval',
-    SyncLLMInterval: 'sync_llm_interval',
+    SyncLLMCron: 'sync_llm_cron',
     RelayLogKeepEnabled: 'relay_log_keep_enabled',
     RelayLogKeepPeriod: 'relay_log_keep_period',
     CORSAllowOrigins: 'cors_allow_origins',
     CircuitBreakerThreshold: 'circuit_breaker_threshold',
     CircuitBreakerCooldown: 'circuit_breaker_cooldown',
     CircuitBreakerMaxCooldown: 'circuit_breaker_max_cooldown',
+    AutoCheckEnabled: 'auto_check_enabled',
+    AutoCheckCron: 'auto_check_cron',
+    AutoCheckDingTalkWebhook: 'auto_check_dingtalk_webhook',
+    AutoCheckDingTalkSecret: 'auto_check_dingtalk_secret',
 } as const;
+
+export const TaskName = {
+    SyncLLM: 'sync_llm',
+    AutoCheck: 'auto_check',
+} as const;
+
+export interface TaskStatus {
+    name: string;
+    type: 'cron' | 'interval';
+    spec: string;
+    last_run: string;
+    next_run: string;
+}
+
+export interface AutoHealthCheckSummary {
+    started_at: string;
+    finished_at: string;
+    checked_channels: number;
+    skipped_channels: number;
+    checked_keys: number;
+    deleted_keys: number;
+    disabled_channels: number;
+    checked_groups: number;
+    skipped_groups: number;
+    checked_group_items: number;
+    skipped_group_items: number;
+    deleted_group_items: number;
+    deleted_key_details: string[];
+    disabled_details: string[];
+    deleted_item_details: string[];
+    errors: string[];
+}
+
+export interface AutoHealthCheckLog {
+    time: string;
+    level: 'info' | 'warn' | 'error' | string;
+    message: string;
+    detail?: string;
+}
+
+export interface AutoHealthCheckStatus {
+    running: boolean;
+    canceling: boolean;
+    trigger: string;
+    phase: string;
+    message: string;
+    current: string;
+    started_at: string;
+    finished_at: string;
+    logs: AutoHealthCheckLog[];
+    summary: AutoHealthCheckSummary;
+}
 
 /**
  * 获取 Setting 列表 Hook
@@ -70,6 +126,73 @@ export function useSetSetting() {
         },
         onError: (error) => {
             logger.error('Setting 设置失败:', error);
+        },
+    });
+}
+
+export function useTaskStatus(name: string) {
+    return useQuery({
+        queryKey: ['settings', 'task-status', name],
+        queryFn: async () => {
+            return apiClient.get<TaskStatus>('/api/v1/setting/task-status', { name });
+        },
+        refetchInterval: 30000,
+    });
+}
+
+export function useAutoCheckStatus() {
+    return useQuery({
+        queryKey: ['settings', 'auto-check-status'],
+        queryFn: async () => {
+            return apiClient.get<AutoHealthCheckStatus>('/api/v1/setting/auto-check/status');
+        },
+        refetchInterval: (query) => query.state.data?.running ? 2000 : 10000,
+        refetchOnMount: 'always',
+    });
+}
+
+export function useRunAutoCheck() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async () => {
+            return apiClient.post<null>('/api/v1/setting/auto-check/run');
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['settings', 'auto-check-status'] });
+            queryClient.invalidateQueries({ queryKey: ['settings', 'task-status', TaskName.AutoCheck] });
+            queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
+            queryClient.invalidateQueries({ queryKey: ['groups', 'list'] });
+        },
+        onError: (error) => {
+            logger.error('自动检测失败:', error);
+        },
+    });
+}
+
+export function useCancelAutoCheck() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async () => {
+            return apiClient.post<null>('/api/v1/setting/auto-check/cancel');
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['settings', 'auto-check-status'] });
+        },
+        onError: (error) => {
+            logger.error('取消自动检测失败:', error);
+        },
+    });
+}
+
+export function useTestAutoCheckDingTalk() {
+    return useMutation({
+        mutationFn: async (data: { webhook: string; secret: string }) => {
+            return apiClient.post<null>('/api/v1/setting/auto-check/test-dingtalk', data);
+        },
+        onError: (error) => {
+            logger.error('测试钉钉 Webhook 失败:', error);
         },
     });
 }

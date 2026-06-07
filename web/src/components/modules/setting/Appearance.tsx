@@ -2,14 +2,12 @@
 
 import { useTheme } from 'next-themes';
 import { useTranslations } from 'next-intl';
-import { Sun, Moon, Monitor, Languages } from 'lucide-react';
+import { Sun, Moon, Monitor } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useSettingStore, type Locale } from '@/stores/setting';
 
 export function SettingAppearance() {
     const t = useTranslations('setting');
     const { theme, setTheme } = useTheme();
-    const { locale, setLocale } = useSettingStore();
 
     return (
         <div className="rounded-3xl border border-border bg-card p-6 space-y-5">
@@ -41,24 +39,6 @@ export function SettingAppearance() {
                             <Monitor className="size-4" />
                             {t('theme.system')}
                         </SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-
-            {/* 语言 */}
-            <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <Languages className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">{t('language.label')}</span>
-                </div>
-                <Select value={locale} onValueChange={(v) => setLocale(v as Locale)}>
-                    <SelectTrigger className="w-36 rounded-xl">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl">
-                        <SelectItem value="zh_hans" className="rounded-xl">{t('language.zh_hans')}</SelectItem>
-                        <SelectItem value="zh_hant" className="rounded-xl">{t('language.zh_hant')}</SelectItem>
-                        <SelectItem value="en" className="rounded-xl">{t('language.en')}</SelectItem>
                     </SelectContent>
                 </Select>
             </div>

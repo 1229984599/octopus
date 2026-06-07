@@ -8,6 +8,7 @@ import { useModelChannelList, type LLMChannel } from '@/api/endpoints/model';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Accordion, AccordionContent, AccordionItem } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
 import { getModelIcon } from '@/lib/model-icons';
@@ -27,6 +28,7 @@ export type GroupEditorValues = {
     mode: GroupMode;
     first_token_time_out: number;
     session_keep_time: number;
+    auto_check: boolean;
     members: SelectedMember[];
 };
 
@@ -317,6 +319,7 @@ export function GroupEditor({
     const [mode, setMode] = useState<GroupMode>((initial?.mode ?? 1) as GroupMode);
     const [firstTokenTimeOut, setFirstTokenTimeOut] = useState<number>(initial?.first_token_time_out ?? 0);
     const [sessionKeepTime, setSessionKeepTime] = useState<number>(initial?.session_keep_time ?? 0);
+    const [autoCheck, setAutoCheck] = useState<boolean>(initial?.auto_check ?? true);
     const [selectedMembers, setSelectedMembers] = useState<SelectedMember[]>(initial?.members ?? []);
     const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
     const [checkingMemberId, setCheckingMemberId] = useState<string | null>(null);
@@ -413,9 +416,17 @@ export function GroupEditor({
             model: member.name,
         });
         const okCount = results.filter((result) => result.ok).length;
+        const detail = results.length > 0
+            ? results.map((result, index) => {
+                const status = result.status_code > 0 ? `HTTP ${result.status_code}` : '无 HTTP 状态';
+                const error = result.error ? ` - ${result.error}` : '';
+                return `Key ${index + 1}: ${result.ok ? '正常' : '异常'}（${status}${error}）`;
+            }).join('\n')
+            : t('form.checkNoResult');
         return {
             ok: okCount > 0,
             message: `${okCount}/${results.length}`,
+            detail,
         };
     }, [checkGroupItem, groupId, t]);
 
@@ -427,7 +438,7 @@ export function GroupEditor({
             toast.success(result.ok ? t('toast.checkDone') : t('toast.checkFailed'), { description: result.message });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            setCheckResults((prev) => ({ ...prev, [member.id]: { ok: false, message } }));
+            setCheckResults((prev) => ({ ...prev, [member.id]: { ok: false, message, detail: message } }));
             toast.error(t('toast.checkFailed'), { description: message });
         } finally {
             setCheckingMemberId(null);
@@ -448,6 +459,7 @@ export function GroupEditor({
                     nextResults[member.id] = {
                         ok: false,
                         message: error instanceof Error ? error.message : String(error),
+                        detail: error instanceof Error ? error.message : String(error),
                     };
                 }
             }
@@ -486,6 +498,7 @@ export function GroupEditor({
             mode,
             first_token_time_out: firstTokenTimeOut,
             session_keep_time: sessionKeepTime,
+            auto_check: autoCheck,
             members: selectedMembers,
         });
     };
@@ -495,7 +508,7 @@ export function GroupEditor({
         <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 ">
             <div className="flex-1 min-h-0 overflow-hidden pr-1">
                 <FieldGroup className="gap-4 flex flex-col min-h-0 h-full">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                         <Field>
                             <FieldLabel htmlFor="group-name">{t('form.name')}</FieldLabel>
                             <Input
@@ -586,6 +599,15 @@ export function GroupEditor({
                                     setSessionKeepTime(Number.isFinite(n) && n > 0 ? n : 0);
                                 }}
                                 className="rounded-xl"
+                            />
+                        </Field>
+
+                        <Field className="justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
+                            <FieldLabel htmlFor="group-auto-check">{t('form.autoCheck')}</FieldLabel>
+                            <Switch
+                                id="group-auto-check"
+                                checked={autoCheck}
+                                onCheckedChange={setAutoCheck}
                             />
                         </Field>
                     </div>

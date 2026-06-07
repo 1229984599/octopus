@@ -29,6 +29,7 @@ func ChannelCreate(channel *model.Channel, ctx context.Context) error {
 	if channel.KeyMode == 0 {
 		channel.KeyMode = model.GroupModeRoundRobin
 	}
+	autoCheck := channel.AutoCheck
 	for i := range channel.Keys {
 		channel.Keys[i].Priority = normalizePositive(channel.Keys[i].Priority, i+1)
 		channel.Keys[i].Weight = normalizePositive(channel.Keys[i].Weight, 1)
@@ -36,6 +37,12 @@ func ChannelCreate(channel *model.Channel, ctx context.Context) error {
 	if err := db.GetDB().WithContext(ctx).Create(channel).Error; err != nil {
 		return err
 	}
+	if err := db.GetDB().WithContext(ctx).Model(&model.Channel{}).
+		Where("id = ?", channel.ID).
+		Update("auto_check", autoCheck).Error; err != nil {
+		return err
+	}
+	channel.AutoCheck = autoCheck
 	channelCache.Set(channel.ID, *channel)
 	for _, k := range channel.Keys {
 		if k.ID != 0 {
@@ -168,6 +175,10 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 		selectFields = append(selectFields, "auto_sync")
 		updates.AutoSync = *req.AutoSync
 	}
+	if req.AutoCheck != nil {
+		selectFields = append(selectFields, "auto_check")
+		updates.AutoCheck = *req.AutoCheck
+	}
 	if req.AutoGroup != nil {
 		selectFields = append(selectFields, "auto_group")
 		updates.AutoGroup = *req.AutoGroup
@@ -278,6 +289,24 @@ func ChannelEnabled(id int, enabled bool, ctx context.Context) error {
 	}
 	oldChannel.Enabled = enabled
 	channelCache.Set(id, oldChannel)
+	return nil
+}
+
+func ChannelKeysDelete(channelID int, keyIDs []int, ctx context.Context) error {
+	if len(keyIDs) == 0 {
+		return nil
+	}
+	if _, ok := channelCache.Get(channelID); !ok {
+		return fmt.Errorf("channel not found")
+	}
+	if err := db.GetDB().WithContext(ctx).
+		Where("id IN ? AND channel_id = ?", keyIDs, channelID).
+		Delete(&model.ChannelKey{}).Error; err != nil {
+		return fmt.Errorf("failed to delete channel keys: %w", err)
+	}
+	if err := channelRefreshCacheByID(channelID, ctx); err != nil {
+		return err
+	}
 	return nil
 }
 

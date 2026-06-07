@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { RefreshCw, Clock } from 'lucide-react';
+import { CalendarClock, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { useSettingList, useSetSetting, SettingKey } from '@/api/endpoints/setting';
+import { useSettingList, useSetSetting, SettingKey, TaskName, useTaskStatus } from '@/api/endpoints/setting';
 import { useLastSyncTime, useSyncChannel } from '@/api/endpoints/channel';
 import { toast } from '@/components/common/Toast';
 
@@ -15,16 +15,17 @@ export function SettingLLMSync() {
     const setSetting = useSetSetting();
     const syncChannel = useSyncChannel();
     const { data: lastSyncTime } = useLastSyncTime();
+    const { data: syncTaskStatus } = useTaskStatus(TaskName.SyncLLM);
 
-    const [syncInterval, setSyncInterval] = useState('');
-    const initialSyncInterval = useRef('');
+    const [syncCron, setSyncCron] = useState('0 2 * * *');
+    const initialSyncCron = useRef('0 2 * * *');
 
     useEffect(() => {
         if (settings) {
-            const interval = settings.find(s => s.key === SettingKey.SyncLLMInterval);
-            if (interval) {
-                queueMicrotask(() => setSyncInterval(interval.value));
-                initialSyncInterval.current = interval.value;
+            const cron = settings.find(s => s.key === SettingKey.SyncLLMCron);
+            if (cron) {
+                queueMicrotask(() => setSyncCron(cron.value));
+                initialSyncCron.current = cron.value;
             }
         }
     }, [settings]);
@@ -35,7 +36,7 @@ export function SettingLLMSync() {
         setSetting.mutate({ key, value }, {
             onSuccess: () => {
                 toast.success(t('saved'));
-                initialSyncInterval.current = value;
+                initialSyncCron.current = value;
             }
         });
     };
@@ -58,6 +59,13 @@ export function SettingLLMSync() {
         return date.toLocaleString();
     };
 
+    const formatNextRunTime = (timeStr: string | undefined) => {
+        if (!timeStr) return t('llmSync.noSchedule');
+        const date = new Date(timeStr);
+        if (date.getFullYear() === 1) return t('llmSync.noSchedule');
+        return date.toLocaleString();
+    };
+
     return (
         <div className="rounded-3xl border border-border bg-card p-6 space-y-5">
             <h2 className="text-lg font-bold text-card-foreground flex items-center gap-2">
@@ -65,20 +73,23 @@ export function SettingLLMSync() {
                 {t('llmSync.title')}
             </h2>
 
-            {/* 同步间隔 */}
-            <div className="flex items-center justify-between gap-4">
+            {/* 同步计划 */}
+            <div className="space-y-2">
                 <div className="flex items-center gap-3">
-                    <Clock className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">{t('llmSync.syncInterval.label')}</span>
+                    <CalendarClock className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-sm font-medium">{t('llmSync.syncCron.label')}</span>
                 </div>
                 <Input
-                    type="number"
-                    value={syncInterval}
-                    onChange={(e) => setSyncInterval(e.target.value)}
-                    onBlur={() => handleSave(SettingKey.SyncLLMInterval, syncInterval, initialSyncInterval.current)}
-                    placeholder={t('llmSync.syncInterval.placeholder')}
-                    className="w-48 rounded-xl"
+                    value={syncCron}
+                    onChange={(e) => setSyncCron(e.target.value)}
+                    onBlur={() => handleSave(SettingKey.SyncLLMCron, syncCron.trim(), initialSyncCron.current)}
+                    placeholder={t('llmSync.syncCron.placeholder')}
+                    className="rounded-xl font-mono"
                 />
+                <div className="grid gap-1 rounded-xl bg-muted/40 px-3 py-2 text-xs text-muted-foreground sm:grid-cols-2">
+                    <span>{t('llmSync.lastSync')}: {formatLastSyncTime(syncTaskStatus?.last_run ?? lastSyncTime)}</span>
+                    <span>{t('llmSync.nextSync')}: {formatNextRunTime(syncTaskStatus?.next_run)}</span>
+                </div>
             </div>
 
             {/* 手动同步 */}
@@ -89,7 +100,7 @@ export function SettingLLMSync() {
                         <span className="text-sm font-medium">{t('llmSync.manualSync.label')}</span>
                     </div>
                     <span className="text-xs text-muted-foreground ml-8">
-                        {t('llmSync.lastSync')}: {formatLastSyncTime(lastSyncTime)}
+                        {t('llmSync.manualSync.hint')}
                     </span>
                 </div>
                 <Button

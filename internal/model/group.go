@@ -1,5 +1,7 @@
 package model
 
+import "encoding/json"
+
 type GroupMode int
 
 const (
@@ -16,7 +18,26 @@ type Group struct {
 	MatchRegex        string      `json:"match_regex"`
 	FirstTokenTimeOut int         `json:"first_token_time_out"` // 单个渠道首个Token响应超时时间(秒)
 	SessionKeepTime   int         `json:"session_keep_time"`    // 会话保持时间(秒) 0 为禁用
+	AutoCheck         bool        `json:"auto_check" gorm:"default:true"`
 	Items             []GroupItem `json:"items,omitempty" gorm:"foreignKey:GroupID"`
+}
+
+func (g *Group) UnmarshalJSON(data []byte) error {
+	type groupAlias Group
+	var payload struct {
+		groupAlias
+		AutoCheck *bool `json:"auto_check"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	*g = Group(payload.groupAlias)
+	if payload.AutoCheck != nil {
+		g.AutoCheck = *payload.AutoCheck
+	} else {
+		g.AutoCheck = true
+	}
+	return nil
 }
 
 type GroupItem struct {
@@ -37,6 +58,7 @@ type GroupUpdateRequest struct {
 	MatchRegex        *string                  `json:"match_regex,omitempty"`          // 仅在匹配正则变更时发送
 	FirstTokenTimeOut *int                     `json:"first_token_time_out,omitempty"` // 仅在超时变更时发送(秒)
 	SessionKeepTime   *int                     `json:"session_keep_time,omitempty"`    // 仅在会话保持时间变更时发送(秒)
+	AutoCheck         *bool                    `json:"auto_check,omitempty"`           // 是否参与自动检测
 	ItemsToAdd        []GroupItemAddRequest    `json:"items_to_add,omitempty"`         // 新增的 items
 	ItemsToUpdate     []GroupItemUpdateRequest `json:"items_to_update,omitempty"`      // 更新的 items (priority 变更)
 	ItemsToDelete     []int                    `json:"items_to_delete,omitempty"`      // 删除的 item IDs

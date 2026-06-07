@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"sync/atomic"
 	"testing"
 )
@@ -58,5 +59,25 @@ func TestChannelGetChannelKeyUsesWeightedKey(t *testing.T) {
 	got := ch.GetChannelKey()
 	if got.ID == 0 {
 		t.Fatal("expected a weighted key candidate")
+	}
+}
+
+func TestChannelUnmarshalAutoCheckDefaultsToTrue(t *testing.T) {
+	var ch Channel
+	if err := json.Unmarshal([]byte(`{"id":1,"name":"test","type":"openai/chat_completions"}`), &ch); err != nil {
+		t.Fatal(err)
+	}
+	if !ch.AutoCheck {
+		t.Fatal("expected auto_check to default to true when missing")
+	}
+}
+
+func TestChannelUnmarshalAutoCheckPreservesFalse(t *testing.T) {
+	var ch Channel
+	if err := json.Unmarshal([]byte(`{"id":1,"name":"test","type":"openai/chat_completions","auto_check":false}`), &ch); err != nil {
+		t.Fatal(err)
+	}
+	if ch.AutoCheck {
+		t.Fatal("expected explicit auto_check=false to be preserved")
 	}
 }

@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { getModelIcon } from '@/lib/model-icons';
 import type { LLMChannel } from '@/api/endpoints/model';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/animate-ui/components/animate/tooltip';
+import { CheckResultDetail } from '@/components/common/CheckResultDetail';
 import { useTranslations } from 'next-intl';
 
 export interface SelectedMember extends LLMChannel {
@@ -26,6 +27,7 @@ export interface SelectedMember extends LLMChannel {
 export type MemberCheckState = {
     ok: boolean;
     message?: string;
+    detail?: string;
 };
 
 function reorderList<T>(list: T[], startIndex: number, endIndex: number): T[] {
@@ -177,17 +179,11 @@ function MemberItem({
                 )}
 
                 {checkState && (
-                    <span
-                        className={cn(
-                            'rounded px-1.5 py-0.5 text-[10px] font-medium',
-                            checkState.ok
-                                ? 'bg-green-500/15 text-green-700 dark:text-green-400'
-                                : 'bg-red-500/15 text-red-700 dark:text-red-400'
-                        )}
-                        title={checkState.message}
-                    >
-                        {checkState.ok ? t('form.checkOk') : t('form.checkBad')}
-                    </span>
+                    <CheckResultDetail
+                        ok={checkState.ok}
+                        label={checkState.ok ? t('form.checkOk') : t('form.checkBad')}
+                        detail={checkState.detail ?? checkState.message}
+                    />
                 )}
 
                 {(!showConfirmDelete || !confirmDelete) && (

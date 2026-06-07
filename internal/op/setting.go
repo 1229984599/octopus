@@ -8,6 +8,7 @@ import (
 	"github.com/bestruirui/octopus/internal/db"
 	"github.com/bestruirui/octopus/internal/model"
 	"github.com/bestruirui/octopus/internal/utils/cache"
+	"gorm.io/gorm/clause"
 )
 
 var settingCache = cache.New[model.SettingKey, string](16)
@@ -32,19 +33,20 @@ func SettingGetString(key model.SettingKey) (string, error) {
 }
 
 func SettingSetString(key model.SettingKey, value string) error {
-	valueCache, ok := settingCache.Get(key)
-	if !ok {
+	if !model.IsKnownSettingKey(key) {
 		return fmt.Errorf("setting not found")
 	}
-	if valueCache == value {
+	valueCache, ok := settingCache.Get(key)
+	if ok && valueCache == value {
 		return nil
 	}
-	result := db.GetDB().Model(&model.Setting{Key: key}).Update("Value", value)
-	if result.Error != nil {
-		return fmt.Errorf("failed to set setting: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("failed to set setting, key not found")
+
+	setting := model.Setting{Key: key, Value: value}
+	if err := db.GetDB().Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value"}),
+	}).Create(&setting).Error; err != nil {
+		return fmt.Errorf("failed to set setting: %w", err)
 	}
 	settingCache.Set(key, value)
 	return nil
@@ -67,25 +69,29 @@ func SettingGetBool(key model.SettingKey) (bool, error) {
 }
 
 func SettingSetInt(key model.SettingKey, value int) error {
-	valueCache, ok := settingCache.Get(key)
-	if !ok {
+	if !model.IsKnownSettingKey(key) {
 		return fmt.Errorf("setting not found")
 	}
-	valueCacheNum, err := strconv.Atoi(valueCache)
-	if err != nil {
+	valueCache, ok := settingCache.Get(key)
+	if ok {
+		valueCacheNum, err := strconv.Atoi(valueCache)
+		if err != nil {
+			return fmt.Errorf("failed to set setting: %w", err)
+		}
+		if valueCacheNum == value {
+			return nil
+		}
+	}
+
+	valueString := strconv.Itoa(value)
+	setting := model.Setting{Key: key, Value: valueString}
+	if err := db.GetDB().Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value"}),
+	}).Create(&setting).Error; err != nil {
 		return fmt.Errorf("failed to set setting: %w", err)
 	}
-	if valueCacheNum == value {
-		return nil
-	}
-	result := db.GetDB().Model(&model.Setting{Key: key}).Update("Value", value)
-	if result.Error != nil {
-		return fmt.Errorf("failed to set setting: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("failed to set setting, key not found")
-	}
-	settingCache.Set(key, strconv.Itoa(value))
+	settingCache.Set(key, valueString)
 	return nil
 }
 

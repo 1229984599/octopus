@@ -186,11 +186,18 @@ func checkChannelKeys(c *gin.Context) {
 }
 
 func syncChannel(c *gin.Context) {
-	task.SyncModelsTask()
+	if err := task.RunNow(task.TaskSyncLLM); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
 	resp.Success(c, nil)
 }
 
 func getLastSyncTime(c *gin.Context) {
-	time := task.GetLastSyncModelsTime()
-	resp.Success(c, time)
+	status, ok := task.GetStatus(task.TaskSyncLLM)
+	if !ok {
+		resp.Error(c, http.StatusNotFound, "task not found")
+		return
+	}
+	resp.Success(c, status.LastRun)
 }

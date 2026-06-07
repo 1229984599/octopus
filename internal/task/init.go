@@ -17,6 +17,7 @@ const (
 	TaskSyncLLM      = "sync_llm"
 	TaskCleanLLM     = "clean_llm"
 	TaskBaseUrlDelay = "base_url_delay"
+	TaskAutoCheck    = "auto_check"
 )
 
 func Init() {
@@ -37,13 +38,14 @@ func Init() {
 	Register(TaskBaseUrlDelay, 1*time.Hour, true, ChannelBaseUrlDelayTask)
 
 	// 注册LLM同步任务
-	syncLLMIntervalHours, err := op.SettingGetInt(model.SettingKeySyncLLMInterval)
+	syncLLMCron, err := op.SettingGetString(model.SettingKeySyncLLMCron)
 	if err != nil {
-		log.Warnf("failed to get sync LLM interval: %v", err)
+		log.Warnf("failed to get sync LLM cron: %v", err)
 		return
 	}
-	syncLLMInterval := time.Duration(syncLLMIntervalHours) * time.Hour
-	Register(string(model.SettingKeySyncLLMInterval), syncLLMInterval, true, SyncModelsTask)
+	if err := RegisterCron(TaskSyncLLM, syncLLMCron, false, SyncModelsTask); err != nil {
+		log.Warnf("failed to register sync LLM cron task: %v", err)
+	}
 
 	// 注册统计保存任务
 	statsSaveIntervalMinutes, err := op.SettingGetInt(model.SettingKeyStatsSaveInterval)
@@ -59,4 +61,13 @@ func Init() {
 			log.Warnf("relay log save db task failed: %v", err)
 		}
 	})
+
+	autoCheckCron, err := op.SettingGetString(model.SettingKeyAutoCheckCron)
+	if err != nil {
+		log.Warnf("failed to get auto check cron: %v", err)
+		return
+	}
+	if err := RegisterCron(TaskAutoCheck, autoCheckCron, false, AutoHealthCheckTask); err != nil {
+		log.Warnf("failed to register auto health check cron task: %v", err)
+	}
 }
