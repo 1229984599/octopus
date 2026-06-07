@@ -32,6 +32,7 @@ type Channel struct {
 	BaseUrls      []BaseUrl      `json:"base_urls" gorm:"serializer:json"`
 	Keys          []ChannelKey   `json:"keys" gorm:"foreignKey:ChannelID"`
 	KeyMode       GroupMode      `json:"key_mode" gorm:"default:1"`
+	RPM           int            `json:"rpm" gorm:"default:0"`
 	Model         string         `json:"model"`
 	CustomModel   string         `json:"custom_model"`
 	Proxy         bool           `json:"proxy" gorm:"default:false"`
@@ -142,6 +143,7 @@ type ChannelUpdateRequest struct {
 	Enabled       *bool           `json:"enabled,omitempty"`
 	BaseUrls      *[]BaseUrl      `json:"base_urls,omitempty"`
 	KeyMode       *GroupMode      `json:"key_mode,omitempty"`
+	RPM           *int            `json:"rpm,omitempty"`
 	Model         *string         `json:"model,omitempty"`
 	CustomModel   *string         `json:"custom_model,omitempty"`
 	Proxy         *bool           `json:"proxy,omitempty"`

@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bestruirui/octopus/internal/helper"
-	"github.com/bestruirui/octopus/internal/model"
-	"github.com/bestruirui/octopus/internal/op"
-	"github.com/bestruirui/octopus/internal/server/middleware"
-	"github.com/bestruirui/octopus/internal/server/resp"
-	"github.com/bestruirui/octopus/internal/server/router"
-	"github.com/bestruirui/octopus/internal/task"
+	"github.com/1229984599/octopus/internal/helper"
+	"github.com/1229984599/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/op"
+	"github.com/1229984599/octopus/internal/server/middleware"
+	"github.com/1229984599/octopus/internal/server/resp"
+	"github.com/1229984599/octopus/internal/server/router"
+	"github.com/1229984599/octopus/internal/task"
 	"github.com/gin-gonic/gin"
 )
 
@@ -176,13 +176,47 @@ func checkChannelKeys(c *gin.Context) {
 		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
 		return
 	}
-	channel, err := op.ChannelGet(request.ID, c.Request.Context())
+	ctx := c.Request.Context()
+	channel, err := op.ChannelGet(request.ID, ctx)
 	if err != nil {
 		resp.Error(c, http.StatusNotFound, err.Error())
 		return
 	}
-	results := helper.CheckChannelKeys(c.Request.Context(), *channel, request.Model, request.KeyIDs)
+	results := helper.CheckChannelKeys(ctx, *channel, request.Model, request.KeyIDs)
+	if err := op.ChannelKeySaveDBByIDs(ctx, channelKeyCheckResultIDs(results)); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if channelKeyCheckAnyOK(results) && !channel.Enabled {
+		if err := op.ChannelEnabled(channel.ID, true, ctx); err != nil {
+			resp.Error(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	if err := op.ChannelRefreshCacheByID(channel.ID, ctx); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
 	resp.Success(c, results)
+}
+
+func channelKeyCheckResultIDs(results []helper.ChannelKeyCheckResult) []int {
+	ids := make([]int, 0, len(results))
+	for _, result := range results {
+		if result.ID != 0 {
+			ids = append(ids, result.ID)
+		}
+	}
+	return ids
+}
+
+func channelKeyCheckAnyOK(results []helper.ChannelKeyCheckResult) bool {
+	for _, result := range results {
+		if result.OK {
+			return true
+		}
+	}
+	return false
 }
 
 func syncChannel(c *gin.Context) {

@@ -10,17 +10,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bestruirui/octopus/internal/model"
-	"github.com/bestruirui/octopus/internal/op"
+	"github.com/1229984599/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/op"
 	"github.com/looplj/axonhub/llm"
 	"github.com/looplj/axonhub/llm/transformer"
 )
 
 type ChannelKeyCheckResult struct {
-	ID         int    `json:"id"`
-	StatusCode int    `json:"status_code"`
-	OK         bool   `json:"ok"`
-	Error      string `json:"error,omitempty"`
+	ID               int    `json:"id"`
+	StatusCode       int    `json:"status_code"`
+	LastUseTimeStamp int64  `json:"last_use_time_stamp,omitempty"`
+	OK               bool   `json:"ok"`
+	Error            string `json:"error,omitempty"`
 }
 
 func CheckChannelKeys(ctx context.Context, channel model.Channel, modelName string, keyIDs []int) []ChannelKeyCheckResult {
@@ -35,8 +36,8 @@ func CheckChannelKeys(ctx context.Context, channel model.Channel, modelName stri
 
 func CheckChannelKey(ctx context.Context, channel model.Channel, key model.ChannelKey, modelName string) ChannelKeyCheckResult {
 	result := ChannelKeyCheckResult{ID: key.ID}
-	if !key.Enabled || strings.TrimSpace(key.ChannelKey) == "" {
-		result.Error = "key disabled or empty"
+	if strings.TrimSpace(key.ChannelKey) == "" {
+		result.Error = "key empty"
 		return result
 	}
 	if strings.TrimSpace(modelName) == "" {
@@ -57,10 +58,15 @@ func CheckChannelKey(ctx context.Context, channel model.Channel, key model.Chann
 	}
 	applyCustomHeaders(req, channel)
 
+	if err := op.WaitChannelRateLimit(ctx, channel.ID, channel.RPM); err != nil {
+		result.Error = err.Error()
+		result.LastUseTimeStamp = saveCheckedKey(key, 0)
+		return result
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		result.Error = err.Error()
-		saveCheckedKey(key, 0)
+		result.LastUseTimeStamp = saveCheckedKey(key, 0)
 		return result
 	}
 	defer resp.Body.Close()
@@ -71,7 +77,7 @@ func CheckChannelKey(ctx context.Context, channel model.Channel, key model.Chann
 	if !result.OK {
 		result.Error = resp.Status
 	}
-	saveCheckedKey(key, resp.StatusCode)
+	result.LastUseTimeStamp = saveCheckedKey(key, resp.StatusCode)
 	return result
 }
 
@@ -206,11 +212,13 @@ func buildGeminiKeyCheckRequest(ctx context.Context, baseURL, key, modelName str
 	return req, nil
 }
 
-func saveCheckedKey(key model.ChannelKey, statusCode int) {
+func saveCheckedKey(key model.ChannelKey, statusCode int) int64 {
 	if key.ID == 0 || key.ChannelID == 0 {
-		return
+		return 0
 	}
+	now := time.Now().Unix()
 	key.StatusCode = statusCode
-	key.LastUseTimeStamp = time.Now().Unix()
+	key.LastUseTimeStamp = now
 	_ = op.ChannelKeyUpdate(key)
+	return now
 }

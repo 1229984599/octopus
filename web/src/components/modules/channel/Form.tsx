@@ -39,6 +39,7 @@ export interface ChannelFormData {
     param_override: string;
     keys: ChannelKeyFormItem[];
     key_mode: GroupMode;
+    rpm: number;
     model: string;
     custom_model: string;
     enabled: boolean;
@@ -135,13 +136,17 @@ export function ChannelForm({
     const effectiveKey =
         formData.keys.find((k) => k.enabled && k.channel_key.trim())?.channel_key.trim() || '';
 
-    const existingKeyIds = useMemo(
+    const selectedKeyIdArray = useMemo(() => Array.from(selectedKeyIds), [selectedKeyIds]);
+    const checkableExistingKeyIds = useMemo(
         () => (formData.keys ?? [])
-            .map((key) => key.id)
-            .filter((id): id is number => typeof id === 'number'),
+            .filter((key) => typeof key.id === 'number' && key.channel_key.trim())
+            .map((key) => key.id as number),
         [formData.keys]
     );
-    const selectedKeyIdArray = useMemo(() => Array.from(selectedKeyIds), [selectedKeyIds]);
+    const selectedCheckableKeyIds = useMemo(
+        () => selectedKeyIdArray.filter((id) => checkableExistingKeyIds.includes(id)),
+        [checkableExistingKeyIds, selectedKeyIdArray]
+    );
     const filteredModelOptions = useMemo(() => {
         const term = modelSearch.trim().toLowerCase();
         if (!term) return checkModelOptions;
@@ -153,12 +158,17 @@ export function ChannelForm({
             .map((key) => key.id as number),
         [formData.keys]
     );
-    const failedCheckedKeyIds = useMemo(
-        () => Object.values(checkResults)
-            .filter((result) => !result.ok)
-            .map((result) => result.id)
-            .filter((id) => existingKeyIds.includes(id)),
-        [checkResults, existingKeyIds]
+    const statusFailedKeyIds = useMemo(
+        () => (formData.keys ?? [])
+            .filter((key) => (
+                typeof key.id === 'number'
+                && key.enabled
+                && typeof key.status_code === 'number'
+                && (key.status_code !== 0 || Boolean(key.last_use_time_stamp))
+                && (key.status_code < 200 || key.status_code >= 300)
+            ))
+            .map((key) => key.id as number),
+        [formData.keys]
     );
 
     const updateModels = (nextAuto: string[], nextCustom: string[]) => {
@@ -292,8 +302,11 @@ export function ChannelForm({
 
     const handleCheckKeys = (keyIds?: number[]) => {
         if (!canManageExistingKeys) return;
-        const ids = keyIds?.length ? keyIds : existingKeyIds;
-        if (ids.length === 0) return;
+        const ids = keyIds?.length ? keyIds.filter((id) => checkableExistingKeyIds.includes(id)) : checkableExistingKeyIds;
+        if (ids.length === 0) {
+            toast.warning(keyT('keyRequired'));
+            return;
+        }
         if (!activeCheckModel) {
             toast.warning(keyT('modelRequired'));
             return;
@@ -309,7 +322,11 @@ export function ChannelForm({
                         keys: formData.keys.map((key) => {
                             if (typeof key.id !== 'number') return key;
                             const result = resultByID.get(key.id);
-                            return result ? { ...key, status_code: result.status_code } : key;
+                            return result ? {
+                                ...key,
+                                status_code: result.status_code,
+                                last_use_time_stamp: result.last_use_time_stamp ?? key.last_use_time_stamp,
+                            } : key;
                         }),
                     });
                     const okCount = results.filter((result) => result.ok).length;
@@ -550,7 +567,7 @@ export function ChannelForm({
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    disabled={checkChannelKeys.isPending || existingKeyIds.length === 0}
+                                    disabled={checkChannelKeys.isPending || checkableExistingKeyIds.length === 0}
                                     onClick={() => handleCheckKeys()}
                                     className="h-7 rounded-lg px-2 text-xs"
                                 >
@@ -561,8 +578,8 @@ export function ChannelForm({
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    disabled={checkChannelKeys.isPending || selectedKeyIdArray.length === 0}
-                                    onClick={() => handleCheckKeys(selectedKeyIdArray)}
+                                    disabled={checkChannelKeys.isPending || selectedCheckableKeyIds.length === 0}
+                                    onClick={() => handleCheckKeys(selectedCheckableKeyIds)}
                                     className="h-7 rounded-lg px-2 text-xs"
                                 >
                                     {keyT('selected')}
@@ -582,8 +599,8 @@ export function ChannelForm({
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    disabled={updateChannel.isPending || failedCheckedKeyIds.length === 0}
-                                    onClick={() => handleDisableKeys(failedCheckedKeyIds)}
+                                    disabled={updateChannel.isPending || statusFailedKeyIds.length === 0}
+                                    onClick={() => handleDisableKeys(statusFailedKeyIds)}
                                     className="h-7 rounded-lg px-2 text-xs"
                                 >
                                     {keyT('disableFailedKeys')}
@@ -692,7 +709,7 @@ export function ChannelForm({
                                 />
                             )}
                             <div className="col-span-3 flex min-w-0 flex-wrap items-center gap-1.5 md:col-span-1 md:flex-nowrap md:justify-end">
-                                {k.status_code !== 0 && k.status_code !== undefined && (
+                                {typeof k.status_code === 'number' && (k.status_code !== 0 || Boolean(k.last_use_time_stamp)) && (
                                     <Badge
                                         variant="secondary"
                                         className={cn(
@@ -863,6 +880,29 @@ export function ChannelForm({
                                         <SelectItem className='rounded-xl' value={String(AutoGroupType.Regex)}>{t('autoGroupRegex')}</SelectItem>
                                     </SelectContent>
                                 </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label htmlFor={`${idPrefix}-rpm`} className="text-sm font-medium text-card-foreground">
+                                    {t('rpm')}
+                                </label>
+                                <Input
+                                    id={`${idPrefix}-rpm`}
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    value={formData.rpm}
+                                    onChange={(e) => {
+                                        const nextRPM = Number(e.target.value);
+                                        onFormDataChange({
+                                            ...formData,
+                                            rpm: Number.isFinite(nextRPM) && nextRPM > 0 ? Math.floor(nextRPM) : 0,
+                                        });
+                                    }}
+                                    placeholder={t('rpmPlaceholder')}
+                                    className="rounded-xl"
+                                />
+                                <p className="text-xs text-muted-foreground">{t('rpmHint')}</p>
                             </div>
 
                             <div className="space-y-2">

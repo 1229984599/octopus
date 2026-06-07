@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync/atomic"
 
-	"github.com/bestruirui/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/model"
 )
 
 var roundRobinCounter uint64
@@ -86,8 +86,8 @@ func (b *Weighted) Candidates(items []model.GroupItem) []model.GroupItem {
 
 	// 构建加权随机排序
 	type weightedItem struct {
-		item   model.GroupItem
-		score  float64
+		item  model.GroupItem
+		score float64
 	}
 
 	totalWeight := 0

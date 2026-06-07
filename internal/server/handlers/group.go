@@ -3,13 +3,14 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
-	"github.com/bestruirui/octopus/internal/helper"
-	"github.com/bestruirui/octopus/internal/model"
-	"github.com/bestruirui/octopus/internal/op"
-	"github.com/bestruirui/octopus/internal/server/middleware"
-	"github.com/bestruirui/octopus/internal/server/resp"
-	"github.com/bestruirui/octopus/internal/server/router"
+	"github.com/1229984599/octopus/internal/helper"
+	"github.com/1229984599/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/op"
+	"github.com/1229984599/octopus/internal/server/middleware"
+	"github.com/1229984599/octopus/internal/server/resp"
+	"github.com/1229984599/octopus/internal/server/router"
 	"github.com/dlclark/regexp2"
 	"github.com/gin-gonic/gin"
 )
@@ -118,7 +119,8 @@ func checkGroupItem(c *gin.Context) {
 		resp.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	group, err := op.GroupGet(request.GroupID, c.Request.Context())
+	ctx := c.Request.Context()
+	group, err := op.GroupGet(request.GroupID, ctx)
 	if err != nil {
 		resp.Error(c, http.StatusNotFound, err.Error())
 		return
@@ -134,7 +136,7 @@ func checkGroupItem(c *gin.Context) {
 		resp.Error(c, http.StatusNotFound, "group item not found")
 		return
 	}
-	channel, err := op.ChannelGet(item.ChannelID, c.Request.Context())
+	channel, err := op.ChannelGet(item.ChannelID, ctx)
 	if err != nil {
 		resp.Error(c, http.StatusNotFound, err.Error())
 		return
@@ -143,8 +145,35 @@ func checkGroupItem(c *gin.Context) {
 	if modelName == "" {
 		modelName = item.ModelName
 	}
-	results := helper.CheckChannelKeys(c.Request.Context(), *channel, modelName, nil)
+	checkChannel := activeCheckChannel(*channel)
+	results := helper.CheckChannelKeys(ctx, checkChannel, modelName, nil)
+	if err := op.ChannelKeySaveDBByIDs(ctx, channelKeyCheckResultIDs(results)); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if channelKeyCheckAnyOK(results) && !channel.Enabled {
+		if err := op.ChannelEnabled(channel.ID, true, ctx); err != nil {
+			resp.Error(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	if err := op.ChannelRefreshCacheByID(channel.ID, ctx); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
 	resp.Success(c, results)
+}
+
+func activeCheckChannel(channel model.Channel) model.Channel {
+	keys := make([]model.ChannelKey, 0, len(channel.Keys))
+	for _, key := range channel.Keys {
+		if !key.Enabled || strings.TrimSpace(key.ChannelKey) == "" {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	channel.Keys = keys
+	return channel
 }
 
 // func autoAddGroupItem(c *gin.Context) {

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/bestruirui/octopus/internal/db"
-	"github.com/bestruirui/octopus/internal/model"
-	"github.com/bestruirui/octopus/internal/utils/cache"
-	"github.com/bestruirui/octopus/internal/utils/log"
-	"github.com/bestruirui/octopus/internal/utils/xstrings"
+	"github.com/1229984599/octopus/internal/db"
+	"github.com/1229984599/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/utils/cache"
+	"github.com/1229984599/octopus/internal/utils/log"
+	"github.com/1229984599/octopus/internal/utils/xstrings"
 )
 
 var channelCache = cache.New[int, model.Channel](16)
@@ -29,6 +29,7 @@ func ChannelCreate(channel *model.Channel, ctx context.Context) error {
 	if channel.KeyMode == 0 {
 		channel.KeyMode = model.GroupModeRoundRobin
 	}
+	channel.RPM = normalizeNonNegative(channel.RPM)
 	autoCheck := channel.AutoCheck
 	for i := range channel.Keys {
 		channel.Keys[i].Priority = normalizePositive(channel.Keys[i].Priority, i+1)
@@ -123,6 +124,41 @@ func ChannelKeySaveDB(ctx context.Context) error {
 	return nil
 }
 
+// ChannelKeySaveDBByIDs writes selected runtime-updated ChannelKey cache entries
+// to database without draining unrelated pending key updates.
+func ChannelKeySaveDBByIDs(ctx context.Context, ids []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	uniqueIDs := make([]int, 0, len(ids))
+	seen := make(map[int]struct{}, len(ids))
+	channelKeyCacheNeedUpdateLock.Lock()
+	for _, id := range ids {
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+		delete(channelKeyCacheNeedUpdate, id)
+	}
+	channelKeyCacheNeedUpdateLock.Unlock()
+
+	dbConn := db.GetDB().WithContext(ctx)
+	for _, id := range uniqueIDs {
+		k, ok := channelKeyCache.Get(id)
+		if !ok {
+			continue
+		}
+		if err := dbConn.Save(&k).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model.Channel, error) {
 	_, ok := channelCache.Get(req.ID)
 	if !ok {
@@ -158,6 +194,10 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 	if req.KeyMode != nil {
 		selectFields = append(selectFields, "key_mode")
 		updates.KeyMode = *req.KeyMode
+	}
+	if req.RPM != nil {
+		selectFields = append(selectFields, "rpm")
+		updates.RPM = normalizeNonNegative(*req.RPM)
 	}
 	if req.Model != nil {
 		selectFields = append(selectFields, "model")
@@ -310,6 +350,10 @@ func ChannelKeysDelete(channelID int, keyIDs []int, ctx context.Context) error {
 	return nil
 }
 
+func ChannelRefreshCacheByID(id int, ctx context.Context) error {
+	return channelRefreshCacheByID(id, ctx)
+}
+
 func ChannelDel(id int, ctx context.Context) error {
 	ch, ok := channelCache.Get(id)
 	if !ok {
@@ -363,6 +407,7 @@ func ChannelDel(id int, ctx context.Context) error {
 
 	// 删除缓存
 	channelCache.Del(id)
+	clearChannelRateLimiter(id)
 	for _, k := range ch.Keys {
 		if k.ID != 0 {
 			channelKeyCache.Del(k.ID)

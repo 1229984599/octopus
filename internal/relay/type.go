@@ -1,8 +1,8 @@
 package relay
 
 import (
-	dbmodel "github.com/bestruirui/octopus/internal/model"
-	"github.com/bestruirui/octopus/internal/relay/balancer"
+	dbmodel "github.com/1229984599/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/relay/balancer"
 	"github.com/gin-gonic/gin"
 	"github.com/looplj/axonhub/llm"
 	"github.com/looplj/axonhub/llm/transformer"

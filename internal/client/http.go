@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"sync"
 
-	"github.com/bestruirui/octopus/internal/model"
-	"github.com/bestruirui/octopus/internal/op"
+	"github.com/1229984599/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/op"
 	"golang.org/x/net/proxy"
 )
 

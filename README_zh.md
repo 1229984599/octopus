@@ -14,7 +14,9 @@
 ## ✨ 特性
 
 - 🔀 **多渠道聚合** - 支持接入多个 LLM 供应商渠道，统一管理
-- 🔑 **多Key支持** - 单渠道支持配置多 Key
+- 🔑 **多Key支持** - 单渠道支持多个 Key，并可按轮询、随机、故障转移、加权方式调度
+- 🩺 **健康检测** - 支持手动或定时检测渠道 Key，自动删除失效 Key，并在恢复后启用渠道
+- 🚦 **渠道 RPM 限速** - 渠道使用和 Key 检测共用同一个 RPM 限速
 - ⚡ **智能优选** - 单渠道多端点，智能选择延迟最小的端点请求
 - ⚖️ **负载均衡** - 自动分配请求，确保服务稳定高效
 - 🔄 **协议互转** - 支持 OpenAI Chat / OpenAI Responses / Anthropic 三种 API 格式互相转换
@@ -32,20 +34,20 @@
 直接运行
 
 ```bash
-docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 bestrui/octopus
+docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 ghcr.io/1229984599/octopus
 ```
 
 或者使用 docker compose 运行
 
 ```bash
-wget https://raw.githubusercontent.com/bestruirui/octopus/refs/heads/dev/docker-compose.yml
+wget https://raw.githubusercontent.com/1229984599/octopus/refs/heads/dev/docker-compose.yml
 docker compose up -d
 ```
 
 
 ### 📦 从 Release 下载
 
-从 [Releases](https://github.com/bestruirui/octopus/releases) 下载对应平台的二进制文件，然后运行：
+从 [Releases](https://github.com/1229984599/octopus/releases) 下载对应平台的二进制文件，然后运行：
 
 ```bash
 ./octopus start
@@ -60,7 +62,7 @@ docker compose up -d
 
 ```bash
 # 克隆项目
-git clone https://github.com/bestruirui/octopus.git
+git clone https://github.com/1229984599/octopus.git
 cd octopus
 # 构建前端
 cd web && pnpm install && pnpm run build && cd ..
@@ -249,6 +251,15 @@ http://localhost:3000
 
 > 💡 **提示**：填写 Base URL 时无需包含具体的 API 端点路径，程序会自动处理。
 
+**Key 管理与检测：**
+
+- 单个渠道可配置多个 Key，并支持轮询、随机、故障转移、加权调度。
+- Key 支持拖动排序，故障转移和轮询会按从上到下的顺序执行。
+- Key 检测支持可搜索的模型选择、批量删除、批量禁用，以及异常详情查看。
+- 检测结果会直接写回渠道 Key 状态；只要任意 Key 检测正常，就会自动启用该渠道。
+- `401` / `403` 这类明确失效的 Key 可以直接删除；上游临时异常可禁用渠道，后续检测恢复后会重新启用。
+- 渠道级 `RPM` 会同时限制正常转发请求和 Key 检测请求，`0` 表示不限制。
+
 ---
 
 ### 📁 分组管理
@@ -268,6 +279,12 @@ http://localhost:3000
 | 🎲 **随机** | 每次请求随机选择一个可用渠道 |
 | 🛡️ **故障转移** | 优先使用高优先级渠道，仅当其故障时才切换到低优先级渠道 |
 | ⚖️ **加权分配** | 根据渠道设置的权重比例分配请求 |
+
+**分组渠道检测：**
+
+- 分组编辑页支持检测所选渠道是否可以正常服务当前分组模型。
+- 分组内每个渠道都可以设置失败重试次数。
+- 检测失败时可查看详细异常说明；检测成功时也会自动启用对应渠道。
 
 > 💡 **示例**：创建分组名称为 `gpt-4o`，将多个供应商的 GPT-4o 渠道加入该分组，即可通过统一的 `model: gpt-4o` 访问所有渠道。
 
@@ -306,6 +323,14 @@ http://localhost:3000
 - 按设定的周期 **定期批量写入** 数据库
 
 > ⚠️ **重要提示**：退出程序时，请使用正常的关闭方式（如 `Ctrl+C` 或发送 `SIGTERM` 信号），以确保内存中的统计数据能正确写入数据库。**请勿使用 `kill -9` 等强制终止方式**，否则可能导致统计数据丢失。
+
+**定时自动检测：**
+
+- 定时检测使用 cron 表达式，并支持手动执行和取消正在运行的检测任务。
+- 检测任务以后台任务运行，可查看实时进度和详细运行日志。
+- 定时任务只检测渠道和渠道 Key，避免通过分组重复检测同一渠道。
+- `401` / `403` Key 会自动删除；上游服务器临时异常可自动禁用渠道。
+- 钉钉机器人通知支持 webhook 和加签密钥配置，并可在设置页测试当前配置。
 
 
 

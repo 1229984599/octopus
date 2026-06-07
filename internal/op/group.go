@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bestruirui/octopus/internal/db"
-	"github.com/bestruirui/octopus/internal/model"
-	"github.com/bestruirui/octopus/internal/utils/cache"
+	"github.com/1229984599/octopus/internal/db"
+	"github.com/1229984599/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/utils/cache"
 	"gorm.io/gorm/clause"
 )
 

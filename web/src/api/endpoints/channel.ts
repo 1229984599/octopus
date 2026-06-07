@@ -63,6 +63,7 @@ export type Channel = {
     base_urls: BaseUrl[];
     keys: ChannelKey[];
     key_mode: GroupMode;
+    rpm: number;
     model: string;
     custom_model: string;
     proxy: boolean;
@@ -102,6 +103,7 @@ export type CreateChannelRequest = {
     base_urls: BaseUrl[];
     keys: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'remark' | 'priority' | 'weight'>>;
     key_mode?: GroupMode;
+    rpm?: number;
     model: string;
     custom_model?: string;
     proxy?: boolean;
@@ -124,6 +126,7 @@ export type UpdateChannelRequest = {
     enabled?: boolean;
     base_urls?: BaseUrl[];
     key_mode?: GroupMode;
+    rpm?: number;
     model?: string;
     custom_model?: string;
     proxy?: boolean;
@@ -143,6 +146,7 @@ export type UpdateChannelRequest = {
 export type ChannelKeyCheckResult = {
     id: number;
     status_code: number;
+    last_use_time_stamp?: number;
     ok: boolean;
     error?: string;
 };

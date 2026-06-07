@@ -14,7 +14,9 @@
 ## ✨ Features
 
 - 🔀 **Multi-Channel Aggregation** - Connect multiple LLM provider channels with unified management
-- 🔑 **Multi-Key Support** - Support multiple API keys for a single channel
+- 🔑 **Multi-Key Support** - Support multiple API keys per channel with round-robin, random, failover, and weighted routing
+- 🩺 **Health Checks** - Manually or automatically check channel keys, remove invalid keys, and re-enable recovered channels
+- 🚦 **Channel RPM Limit** - Share a channel-level RPM limit between normal relay traffic and key checks
 - ⚡ **Smart Selection** - Multiple endpoints per channel, smart selection of the endpoint with the shortest delay
 - ⚖️ **Load Balancing** - Automatic request distribution for stable and efficient service
 - 🔄 **Protocol Conversion** - Seamless conversion between OpenAI Chat / OpenAI Responses / Anthropic API formats
@@ -32,20 +34,20 @@
 Run directly:
 
 ```bash
-docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 bestrui/octopus
+docker run -d --name octopus -v /path/to/data:/app/data -p 8080:8080 ghcr.io/1229984599/octopus
 ```
 
 Or use docker compose:
 
 ```bash
-wget https://raw.githubusercontent.com/bestruirui/octopus/refs/heads/dev/docker-compose.yml
+wget https://raw.githubusercontent.com/1229984599/octopus/refs/heads/dev/docker-compose.yml
 docker compose up -d
 ```
 
 
 ### 📦 Download from Release
 
-Download the binary for your platform from [Releases](https://github.com/bestruirui/octopus/releases), then run:
+Download the binary for your platform from [Releases](https://github.com/1229984599/octopus/releases), then run:
 
 ```bash
 ./octopus start
@@ -60,7 +62,7 @@ Download the binary for your platform from [Releases](https://github.com/bestrui
 
 ```bash
 # Clone the repository
-git clone https://github.com/bestruirui/octopus.git
+git clone https://github.com/1229984599/octopus.git
 cd octopus
 # Build frontend
 cd web && pnpm install && pnpm run build && cd ..
@@ -248,6 +250,15 @@ The program automatically appends API paths based on channel type. You only need
 
 > 💡 **Tip**: No need to include specific API endpoint paths in the Base URL - the program handles this automatically.
 
+**Key Management and Checks:**
+
+- A channel can contain multiple keys and route them by round-robin, random, failover, or weighted mode.
+- Key order can be adjusted by dragging, so failover and round-robin follow the configured top-to-bottom order.
+- Key checks support searchable model selection, batch delete, batch disable, and detailed error inspection.
+- Check results are written back to the channel key status. If any key checks successfully, the channel is enabled automatically.
+- `401` / `403` keys can be removed directly. Temporary upstream failures can disable the channel until a later successful check re-enables it.
+- Channel-level `RPM` limits relay requests and key checks together. `0` means unlimited.
+
 ---
 
 ### 📁 Group Management
@@ -267,6 +278,12 @@ Groups aggregate multiple channels into a unified external model name.
 | 🎲 **Random** | Randomly selects an available channel for each request |
 | 🛡️ **Failover** | Prioritizes high-priority channels, switches to lower priority only on failure |
 | ⚖️ **Weighted** | Distributes requests based on configured channel weights |
+
+**Group Channel Checks:**
+
+- Group editing supports checking whether a selected channel can serve the group model.
+- Each group channel can configure a retry count used when the selected channel fails.
+- Failed group-channel checks expose detailed error information, while successful key checks can re-enable the underlying channel.
 
 > 💡 **Example**: Create a group named `gpt-4o`, add multiple providers' GPT-4o channels to it, then access all channels via a unified `model: gpt-4o`.
 
@@ -305,6 +322,14 @@ Since the program handles numerous statistics, writing to the database on every 
 - Periodically **batch-written** to the database at the configured interval
 
 > ⚠️ **Important**: When exiting the program, use proper shutdown methods (like `Ctrl+C` or sending `SIGTERM` signal) to ensure in-memory statistics are correctly written to the database. **Do NOT use `kill -9` or other forced termination methods**, as this may result in statistics data loss.
+
+**Automatic Health Checks:**
+
+- Scheduled health checks use cron expressions, with manual run and cancel support.
+- Checks run in the background and show live progress plus detailed runtime logs.
+- The scheduled task checks channels and channel keys only, avoiding repeated checks through groups.
+- `401` / `403` keys are deleted automatically. Temporary server-side failures can disable a channel.
+- DingTalk robot notifications support webhook and signed secret configuration, including a test button in settings.
 
 ---
 

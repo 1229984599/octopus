@@ -3,7 +3,7 @@ package relay
 import (
 	"fmt"
 
-	dbmodel "github.com/bestruirui/octopus/internal/model"
+	dbmodel "github.com/1229984599/octopus/internal/model"
 	"github.com/looplj/axonhub/llm"
 	"github.com/looplj/axonhub/llm/transformer"
 	"github.com/looplj/axonhub/llm/transformer/anthropic"

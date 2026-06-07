@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/bestruirui/octopus/internal/conf"
+	"github.com/1229984599/octopus/internal/conf"
 	"github.com/spf13/cobra"
 )
 

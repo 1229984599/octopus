@@ -50,6 +50,7 @@ function buildChannelFormData(channel: Channel): ChannelFormData {
             }))
             : [{ enabled: true, channel_key: '', remark: '', priority: 1, weight: 1 }],
         key_mode: channel.key_mode > 0 ? channel.key_mode : GroupMode.RoundRobin,
+        rpm: channel.rpm ?? 0,
         model: channel.model,
         custom_model: channel.custom_model,
         proxy: channel.proxy,
@@ -91,6 +92,7 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
             }));
         }
         if (formData.key_mode !== channel.key_mode) req.key_mode = formData.key_mode;
+        if (formData.rpm !== (channel.rpm ?? 0)) req.rpm = formData.rpm;
         if (formData.model !== channel.model) req.model = formData.model;
         if (formData.custom_model !== channel.custom_model) req.custom_model = formData.custom_model;
         if (formData.proxy !== channel.proxy) req.proxy = formData.proxy;

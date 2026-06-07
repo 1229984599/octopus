@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bestruirui/octopus/internal/helper"
-	dbmodel "github.com/bestruirui/octopus/internal/model"
-	"github.com/bestruirui/octopus/internal/op"
-	"github.com/bestruirui/octopus/internal/relay/balancer"
-	"github.com/bestruirui/octopus/internal/server/resp"
-	"github.com/bestruirui/octopus/internal/utils/log"
+	"github.com/1229984599/octopus/internal/helper"
+	dbmodel "github.com/1229984599/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/op"
+	"github.com/1229984599/octopus/internal/relay/balancer"
+	"github.com/1229984599/octopus/internal/server/resp"
+	"github.com/1229984599/octopus/internal/utils/log"
 	"github.com/gin-gonic/gin"
 	"github.com/looplj/axonhub/llm"
 	"github.com/looplj/axonhub/llm/httpclient"
@@ -264,6 +264,9 @@ func (ra *relayAttempt) forward() (int, error) {
 	httpClient, err := helper.ChannelHttpClient(ra.channel)
 	if err != nil {
 		log.Warnf("failed to get http client: %v", err)
+		return 0, err
+	}
+	if err := op.WaitChannelRateLimit(ctx, ra.channel.ID, ra.channel.RPM); err != nil {
 		return 0, err
 	}
 

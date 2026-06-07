@@ -160,7 +160,6 @@ export function SettingAutoCheck() {
     const detailItems = [
         ...(summary?.disabled_details ?? []).map(item => ({ type: t('autoCheck.status.disabled'), text: item })),
         ...(summary?.deleted_key_details ?? []).map(item => ({ type: t('autoCheck.status.deletedKey'), text: item })),
-        ...(summary?.deleted_item_details ?? []).map(item => ({ type: t('autoCheck.status.deletedItem'), text: item })),
         ...(summary?.errors ?? []).map(item => ({ type: t('autoCheck.status.error'), text: item })),
     ].slice(-8).reverse();
 
@@ -259,10 +258,10 @@ export function SettingAutoCheck() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                    <StatusMetric label={t('autoCheck.status.checkedChannels')} value={summary?.checked_channels ?? 0} />
                     <StatusMetric label={t('autoCheck.status.checkedKeys')} value={summary?.checked_keys ?? 0} />
                     <StatusMetric label={t('autoCheck.status.deletedKeys')} value={summary?.deleted_keys ?? 0} />
                     <StatusMetric label={t('autoCheck.status.disabledChannels')} value={summary?.disabled_channels ?? 0} />
-                    <StatusMetric label={t('autoCheck.status.deletedGroupItems')} value={summary?.deleted_group_items ?? 0} />
                 </div>
 
                 <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">

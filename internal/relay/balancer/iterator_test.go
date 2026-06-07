@@ -3,7 +3,7 @@ package balancer
 import (
 	"testing"
 
-	"github.com/bestruirui/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/model"
 )
 
 func TestIteratorExpandsGroupItemRetryCount(t *testing.T) {

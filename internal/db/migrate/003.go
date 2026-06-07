@@ -3,7 +3,7 @@ package migrate
 import (
 	"fmt"
 
-	"github.com/bestruirui/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/model"
 	"github.com/looplj/axonhub/llm"
 	"gorm.io/gorm"
 )

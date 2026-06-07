@@ -17,14 +17,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bestruirui/octopus/internal/helper"
-	"github.com/bestruirui/octopus/internal/model"
-	"github.com/bestruirui/octopus/internal/op"
-	"github.com/bestruirui/octopus/internal/utils/log"
-	"github.com/bestruirui/octopus/internal/utils/xstrings"
+	"github.com/1229984599/octopus/internal/helper"
+	"github.com/1229984599/octopus/internal/model"
+	"github.com/1229984599/octopus/internal/op"
+	"github.com/1229984599/octopus/internal/utils/log"
+	"github.com/1229984599/octopus/internal/utils/xstrings"
 )
 
-const autoHealthCheckTimeout = 30 * time.Minute
+const (
+	autoHealthCheckTimeout            = 30 * time.Minute
+	autoHealthCheckChannelConcurrency = 8
+)
 
 var (
 	ErrAutoHealthCheckRunning    = errors.New("auto health check is already running")
@@ -297,13 +300,11 @@ func runAutoHealthCheckWithNotify(ctx context.Context, cancel context.CancelFunc
 	}()
 
 	summary := runAutoHealthCheck(ctx)
-	log.Infof("auto health check finished: channels=%d keys=%d deleted_keys=%d groups=%d group_items=%d deleted_group_items=%d disabled_channels=%d errors=%d",
+	log.Infof("auto health check finished: channels=%d skipped_channels=%d keys=%d deleted_keys=%d disabled_channels=%d errors=%d",
 		summary.CheckedChannels,
+		summary.SkippedChannels,
 		summary.CheckedKeys,
 		summary.DeletedKeys,
-		summary.CheckedGroups,
-		summary.CheckedGroupItems,
-		summary.DeletedGroupItems,
 		summary.DisabledChannels,
 		len(summary.Errors),
 	)
@@ -341,31 +342,77 @@ func runAutoHealthCheck(ctx context.Context) (summary autoHealthCheckSummary) {
 	}
 	sort.Slice(channels, func(i, j int) bool { return channels[i].ID < channels[j].ID })
 
-	for _, channel := range channels {
-		if ctx.Err() != nil {
-			summary.Errors = append(summary.Errors, ctx.Err().Error())
-			return
-		}
-		checkChannelKeys(ctx, channel, &summary)
-	}
-
-	updateAutoHealthCheckProgress("loading_groups", "正在读取分组列表...", "", summary)
-	groups, err := op.GroupList(ctx)
-	if err != nil {
-		summary.Errors = append(summary.Errors, fmt.Sprintf("list groups: %v", err))
+	workerCount := minInt(autoHealthCheckChannelConcurrency, len(channels))
+	if workerCount <= 0 {
 		return
 	}
-	sort.Slice(groups, func(i, j int) bool { return groups[i].ID < groups[j].ID })
 
-	for _, group := range groups {
-		if ctx.Err() != nil {
-			summary.Errors = append(summary.Errors, ctx.Err().Error())
-			return
+	jobs := make(chan model.Channel)
+	results := make(chan autoHealthCheckSummary, len(channels))
+	var wg sync.WaitGroup
+	startedAt := summary.StartedAt
+
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for channel := range jobs {
+				localSummary := autoHealthCheckSummary{StartedAt: startedAt}
+				if ctx.Err() != nil {
+					localSummary.Errors = append(localSummary.Errors, ctx.Err().Error())
+					results <- localSummary
+					continue
+				}
+				checkChannelKeys(ctx, channel, &localSummary)
+				results <- localSummary
+			}
+		}()
+	}
+
+	go func() {
+		defer close(jobs)
+		for _, channel := range channels {
+			select {
+			case <-ctx.Done():
+				return
+			case jobs <- channel:
+			}
 		}
-		checkGroupItems(ctx, group, &summary)
+	}()
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for delta := range results {
+		mergeAutoHealthCheckSummary(&summary, delta)
+		current := fmt.Sprintf("%d/%d", summary.CheckedChannels+summary.SkippedChannels, len(channels))
+		updateAutoHealthCheckProgress("checking_channel", "渠道 Key 检测进度已更新", current, summary)
+	}
+
+	if ctx.Err() != nil {
+		summary.Errors = append(summary.Errors, ctx.Err().Error())
 	}
 
 	return
+}
+
+func mergeAutoHealthCheckSummary(summary *autoHealthCheckSummary, delta autoHealthCheckSummary) {
+	summary.CheckedChannels += delta.CheckedChannels
+	summary.SkippedChannels += delta.SkippedChannels
+	summary.CheckedKeys += delta.CheckedKeys
+	summary.DeletedKeys += delta.DeletedKeys
+	summary.DisabledChannels += delta.DisabledChannels
+	summary.CheckedGroups += delta.CheckedGroups
+	summary.SkippedGroups += delta.SkippedGroups
+	summary.CheckedGroupItems += delta.CheckedGroupItems
+	summary.SkippedGroupItems += delta.SkippedGroupItems
+	summary.DeletedGroupItems += delta.DeletedGroupItems
+	summary.DeletedKeyDetails = append(summary.DeletedKeyDetails, delta.DeletedKeyDetails...)
+	summary.DisabledDetails = append(summary.DisabledDetails, delta.DisabledDetails...)
+	summary.DeletedItemDetails = append(summary.DeletedItemDetails, delta.DeletedItemDetails...)
+	summary.Errors = append(summary.Errors, delta.Errors...)
 }
 
 func checkChannelKeys(ctx context.Context, channel model.Channel, summary *autoHealthCheckSummary) {
@@ -395,6 +442,19 @@ func checkChannelKeys(ctx context.Context, channel model.Channel, summary *autoH
 	results := helper.CheckChannelKeys(ctx, channel, modelName, nil)
 	summary.CheckedChannels++
 	summary.CheckedKeys += len(results)
+	if err := op.ChannelKeySaveDBByIDs(ctx, checkResultKeyIDs(results)); err != nil {
+		errText := fmt.Sprintf("save channel %d key status after check: %v", channel.ID, err)
+		summary.Errors = append(summary.Errors, errText)
+		appendAutoHealthCheckLog("error", "保存渠道 Key 状态失败", errText)
+	} else if err := op.ChannelRefreshCacheByID(channel.ID, ctx); err != nil {
+		errText := fmt.Sprintf("refresh channel %d after key status save: %v", channel.ID, err)
+		summary.Errors = append(summary.Errors, errText)
+		appendAutoHealthCheckLog("error", "刷新渠道 Key 状态失败", errText)
+	}
+	if anyResultOK(results) {
+		enableChannel(ctx, channel, fmt.Sprintf("渠道 Key 检测通过（%s）", checkResultSummary(results)), summary)
+		channel.Enabled = true
+	}
 	if ctx.Err() != nil {
 		summary.Errors = append(summary.Errors, ctx.Err().Error())
 		updateAutoHealthCheckProgress("checking_channel", "检测任务已取消", current, *summary)
@@ -571,6 +631,16 @@ func channelKeyLabels(keys []model.ChannelKey) map[int]string {
 	return labels
 }
 
+func checkResultKeyIDs(results []helper.ChannelKeyCheckResult) []int {
+	ids := make([]int, 0, len(results))
+	for _, result := range results {
+		if result.ID != 0 {
+			ids = append(ids, result.ID)
+		}
+	}
+	return ids
+}
+
 func channelKeyLabel(key model.ChannelKey) string {
 	parts := []string{fmt.Sprintf("Key #%d", key.ID)}
 	if remark := strings.TrimSpace(key.Remark); remark != "" {
@@ -724,6 +794,19 @@ func shouldDisableChannel(channel model.Channel, results []helper.ChannelKeyChec
 	return channel.Enabled && len(results) > 0 && !anyResultOK(results) && hasTemporaryChannelFailure(results)
 }
 
+func enableChannel(ctx context.Context, channel model.Channel, reason string, summary *autoHealthCheckSummary) {
+	if channel.Enabled {
+		return
+	}
+	if err := op.ChannelEnabled(channel.ID, true, ctx); err != nil {
+		errText := fmt.Sprintf("enable channel %d: %v", channel.ID, err)
+		summary.Errors = append(summary.Errors, errText)
+		appendAutoHealthCheckLog("error", "启用渠道失败", errText)
+		return
+	}
+	appendAutoHealthCheckLog("info", "检测通过，已启用渠道", fmt.Sprintf("%s(%d)\n原因: %s", channel.Name, channel.ID, reason))
+}
+
 func disableChannel(ctx context.Context, channel model.Channel, reason string, summary *autoHealthCheckSummary) {
 	if !channel.Enabled {
 		return
@@ -838,15 +921,11 @@ func (s autoHealthCheckSummary) dingTalkContent() string {
 	}
 	b.WriteString(fmt.Sprintf("渠道: 检测 %d, 跳过 %d, 禁用 %d\n", s.CheckedChannels, s.SkippedChannels, s.DisabledChannels))
 	b.WriteString(fmt.Sprintf("Key: 检测 %d, 删除 %d\n", s.CheckedKeys, s.DeletedKeys))
-	b.WriteString(fmt.Sprintf("分组: 检测 %d, 跳过 %d, 分组项检测 %d, 删除 %d\n", s.CheckedGroups, s.SkippedGroups, s.CheckedGroupItems, s.DeletedGroupItems))
 	if len(s.DisabledDetails) > 0 {
 		appendLimitedLines(&b, "禁用渠道", s.DisabledDetails)
 	}
 	if len(s.DeletedKeyDetails) > 0 {
 		appendLimitedLines(&b, "删除 Key", s.DeletedKeyDetails)
-	}
-	if len(s.DeletedItemDetails) > 0 {
-		appendLimitedLines(&b, "删除分组渠道", s.DeletedItemDetails)
 	}
 	if len(s.Errors) > 0 {
 		appendLimitedLines(&b, "异常", s.Errors)
