@@ -39,4 +39,8 @@ func TestChannelBatchUpdateHasFields(t *testing.T) {
 	if !channelBatchUpdateHasFields(&model.ChannelBatchUpdateRequest{IDs: []int{1}, RPM: &rpm}) {
 		t.Fatal("expected explicit zero rpm to count as an update field")
 	}
+	tags := []string{}
+	if !channelBatchUpdateHasFields(&model.ChannelBatchUpdateRequest{IDs: []int{1}, Tags: &tags}) {
+		t.Fatal("expected explicit empty tags to count as an update field")
+	}
 }

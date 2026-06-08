@@ -538,7 +538,11 @@
             "editSuccess": "批量修改成功",
             "editFailed": "批量修改失败",
             "deleteSuccess": "批量删除成功",
-            "deleteFailed": "批量删除失败"
+            "deleteFailed": "批量删除失败",
+            "allTags": "全部标签",
+            "tagsPlaceholder": "多个标签用逗号分隔，留空表示清空标签",
+            "tagsSearchPlaceholder": "搜索或创建标签",
+            "tagsEmptyHint": "勾选后不选择标签，将清空这些渠道的标签"
         },
         "detail": {
             "title": {
@@ -549,6 +553,7 @@
                 "requests": "请求详情",
                 "tokens": "Token 使用",
                 "costs": "成本详情",
+                "tags": "标签",
                 "baseUrls": "Base URLs",
                 "keys": "密钥"
             },
@@ -607,6 +612,12 @@
         "form": {
             "add": "添加",
             "name": "渠道名称",
+            "tags": "渠道标签",
+            "tagsPlaceholder": "输入标签后回车，例如 官方、免费、备用",
+            "tagsHint": "可添加多个标签，用于列表展示和筛选",
+            "tagsAdd": "添加标签",
+            "tagsCreateHint": "没有匹配的已有标签，按回车或点击加号创建",
+            "tagsNoOptions": "暂无已有标签，可直接输入新标签",
             "type": "渠道类型",
             "baseUrls": "Base URLs",
             "baseUrlUrl": "地址",

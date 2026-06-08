@@ -13,6 +13,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/animate-ui
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/common/Toast';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 export function Card({
     channel,
@@ -47,6 +48,8 @@ export function Card({
         ...splitModels(channel.custom_model),
     ]).size;
     const enabledKeyCount = channel.keys.filter((item) => item.enabled).length;
+    const visibleTags = channel.tags.slice(0, isListLayout ? 4 : 3);
+    const hiddenTagCount = Math.max(0, channel.tags.length - visibleTags.length);
 
     const handleEnableChange = (checked: boolean) => {
         enableChannel.mutate(
@@ -107,6 +110,21 @@ export function Card({
                     onClick={(e) => e.stopPropagation()}
                 />
             </header>
+
+            {channel.tags.length > 0 && (
+                <div className="flex min-h-6 flex-wrap gap-1">
+                    {visibleTags.map((tag) => (
+                        <Badge key={tag} variant="secondary" className="max-w-full rounded-md px-1.5 py-0 text-[10px] font-normal">
+                            <span className="truncate">{tag}</span>
+                        </Badge>
+                    ))}
+                    {hiddenTagCount > 0 && (
+                        <Badge variant="outline" className="rounded-md px-1.5 py-0 text-[10px] font-normal">
+                            +{hiddenTagCount}
+                        </Badge>
+                    )}
+                </div>
+            )}
 
             {isListLayout ? (
                 <dl className="grid grid-cols-2 gap-2 lg:grid-cols-6">

@@ -34,11 +34,13 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { toast } from '@/components/common/Toast';
 import { cn } from '@/lib/utils';
-import { CheckSquare, Edit3, Trash2, X } from 'lucide-react';
+import { Check, CheckSquare, Edit3, Plus, Search, Trash2, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 type ChannelListItem = {
@@ -48,6 +50,7 @@ type ChannelListItem = {
 
 type BatchFieldState = {
     enabled: boolean;
+    tags: boolean;
     key_mode: boolean;
     rpm: boolean;
     proxy: boolean;
@@ -58,6 +61,7 @@ type BatchFieldState = {
 
 const DEFAULT_BATCH_FIELDS: BatchFieldState = {
     enabled: false,
+    tags: false,
     key_mode: false,
     rpm: false,
     proxy: false,
@@ -79,6 +83,7 @@ export function Channel() {
 
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [selectedTag, setSelectedTag] = useState<string>('all');
     const [editOpen, setEditOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -94,13 +99,36 @@ export function Channel() {
 
     const visibleChannels = useMemo(() => {
         const term = searchTerm.toLowerCase().trim();
-        const byName = !term ? sortedChannels : sortedChannels.filter((c) => c.raw.name.toLowerCase().includes(term));
+        const bySearch = !term
+            ? sortedChannels
+            : sortedChannels.filter((c) => {
+                const haystack = [
+                    c.raw.name,
+                    ...(c.raw.base_urls ?? []).map((item) => item.url),
+                    ...(c.raw.tags ?? []),
+                ].join('\n').toLowerCase();
+                return haystack.includes(term);
+            });
 
-        if (filter === 'enabled') return byName.filter((c) => c.raw.enabled);
-        if (filter === 'disabled') return byName.filter((c) => !c.raw.enabled);
+        const byTag = selectedTag === 'all'
+            ? bySearch
+            : bySearch.filter((c) => (c.raw.tags ?? []).includes(selectedTag));
 
-        return byName;
-    }, [sortedChannels, searchTerm, filter]);
+        if (filter === 'enabled') return byTag.filter((c) => c.raw.enabled);
+        if (filter === 'disabled') return byTag.filter((c) => !c.raw.enabled);
+
+        return byTag;
+    }, [sortedChannels, searchTerm, filter, selectedTag]);
+
+    const availableTags = useMemo(() => {
+        const tags = new Set<string>();
+        sortedChannels.forEach((item) => {
+            (item.raw.tags ?? []).forEach((tag) => {
+                if (tag.trim()) tags.add(tag);
+            });
+        });
+        return Array.from(tags).sort((a, b) => a.localeCompare(b));
+    }, [sortedChannels]);
 
     const visibleChannelIds = useMemo(() => visibleChannels.map((item) => item.raw.id), [visibleChannels]);
     const selectedIdArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
@@ -114,6 +142,11 @@ export function Channel() {
             return next.size === prev.size ? prev : next;
         });
     }, [channelsData]);
+
+    useEffect(() => {
+        if (selectedTag === 'all') return;
+        if (!availableTags.includes(selectedTag)) setSelectedTag('all');
+    }, [availableTags, selectedTag]);
 
     const toggleSelectionMode = () => {
         setSelectionMode((prev) => {
@@ -220,6 +253,37 @@ export function Channel() {
                 </div>
             </div>
 
+            {availableTags.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card/60 p-2">
+                    <button
+                        type="button"
+                        onClick={() => setSelectedTag('all')}
+                        className={cn(
+                            'inline-flex h-7 items-center rounded-md border px-2 text-xs transition-colors',
+                            selectedTag === 'all'
+                                ? 'border-primary bg-primary text-primary-foreground'
+                                : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        {t('allTags')}
+                    </button>
+                    {availableTags.map((tag) => (
+                        <button
+                            key={tag}
+                            type="button"
+                            onClick={() => setSelectedTag((prev) => (prev === tag ? 'all' : tag))}
+                        >
+                            <Badge
+                                variant={selectedTag === tag ? 'default' : 'secondary'}
+                                className="h-7 max-w-36 cursor-pointer rounded-md px-2 text-xs font-normal"
+                            >
+                                <span className="truncate">{tag}</span>
+                            </Badge>
+                        </button>
+                    ))}
+                </div>
+            )}
+
             <div className="min-h-0 flex-1">
                 <VirtualizedGrid
                     items={visibleChannels}
@@ -244,6 +308,7 @@ export function Channel() {
                 open={editOpen}
                 onOpenChange={setEditOpen}
                 selectedIds={selectedIdArray}
+                availableTags={availableTags}
                 onDone={() => {
                     setSelectionMode(false);
                     setSelectedIds(new Set());
@@ -278,11 +343,13 @@ function BatchEditDialog({
     open,
     onOpenChange,
     selectedIds,
+    availableTags,
     onDone,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     selectedIds: number[];
+    availableTags: string[];
     onDone: () => void;
 }) {
     const t = useTranslations('channel.batch');
@@ -291,6 +358,7 @@ function BatchEditDialog({
     const [fields, setFields] = useState<BatchFieldState>(DEFAULT_BATCH_FIELDS);
     const [values, setValues] = useState({
         enabled: true,
+        tags: [] as string[],
         key_mode: GroupMode.RoundRobin,
         rpm: 10,
         proxy: false,
@@ -298,16 +366,60 @@ function BatchEditDialog({
         auto_check: true,
         auto_group: AutoGroupType.Regex,
     });
+    const [tagInputValue, setTagInputValue] = useState('');
+    const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
 
     useEffect(() => {
         if (!open) return;
         setFields(DEFAULT_BATCH_FIELDS);
+        setTagInputValue('');
+        setTagPopoverOpen(false);
     }, [open]);
 
     const hasFields = Object.values(fields).some(Boolean);
+    const filteredTagOptions = useMemo(() => {
+        const selected = new Set(values.tags.map((tag) => tag.toLowerCase()));
+        const term = tagInputValue.trim().toLowerCase();
+        return availableTags.filter((tag) => {
+            if (selected.has(tag.toLowerCase())) return false;
+            return !term || tag.toLowerCase().includes(term);
+        });
+    }, [availableTags, tagInputValue, values.tags]);
 
     const updateField = <K extends keyof BatchFieldState>(key: K, value: BatchFieldState[K]) => {
         setFields((prev) => ({ ...prev, [key]: value }));
+    };
+
+    const normalizeTags = (tags: string[]) => {
+        const seen = new Set<string>();
+        const normalized: string[] = [];
+        for (const tag of tags) {
+            const trimmed = tag.trim();
+            if (!trimmed) continue;
+            const key = trimmed.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            normalized.push(trimmed);
+        }
+        return normalized;
+    };
+
+    const handleAddTag = (tag: string) => {
+        const nextTags = normalizeTags([...values.tags, tag]);
+        setValues((prev) => ({ ...prev, tags: nextTags }));
+        setTagInputValue('');
+        setTagPopoverOpen(false);
+    };
+
+    const handleRemoveTag = (tag: string) => {
+        setValues((prev) => ({ ...prev, tags: prev.tags.filter((item) => item !== tag) }));
+    };
+
+    const handleTagInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Enter' || event.key === ',') {
+            event.preventDefault();
+            if (tagInputValue.trim()) handleAddTag(tagInputValue);
+        }
     };
 
     const handleSubmit = () => {
@@ -319,6 +431,9 @@ function BatchEditDialog({
 
         const payload: BatchUpdateChannelRequest = { ids: selectedIds };
         if (fields.enabled) payload.enabled = values.enabled;
+        if (fields.tags) {
+            payload.tags = normalizeTags(values.tags);
+        }
         if (fields.key_mode) payload.key_mode = values.key_mode;
         if (fields.rpm) payload.rpm = Math.max(0, Number(values.rpm) || 0);
         if (fields.proxy) payload.proxy = values.proxy;
@@ -354,6 +469,83 @@ function BatchEditDialog({
                         value={values.enabled}
                         onValueChange={(enabled) => setValues((prev) => ({ ...prev, enabled }))}
                     />
+                    <BatchSelectRow
+                        checked={fields.tags}
+                        onCheckedChange={(checked) => updateField('tags', checked)}
+                        label={tForm('tags')}
+                    >
+                        <div className={cn('space-y-2', !fields.tags && 'opacity-60')}>
+                            <Popover open={fields.tags && tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                                <PopoverAnchor asChild>
+                                    <div className="relative">
+                                        <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                                        <Input
+                                            disabled={!fields.tags}
+                                            value={tagInputValue}
+                                            onFocus={() => fields.tags && setTagPopoverOpen(true)}
+                                            onChange={(event) => {
+                                                setTagInputValue(event.target.value);
+                                                setTagPopoverOpen(true);
+                                            }}
+                                            onKeyDown={handleTagInputKeyDown}
+                                            placeholder={t('tagsSearchPlaceholder')}
+                                            className="pl-9 pr-10"
+                                        />
+                                        {fields.tags && tagInputValue.trim() && (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleAddTag(tagInputValue)}
+                                                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-lg p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                                title={tForm('tagsAdd')}
+                                            >
+                                                <Plus className="size-4" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </PopoverAnchor>
+                                <PopoverContent align="start" className="w-[--radix-popover-trigger-width] min-w-72 rounded-xl p-2">
+                                    <div className="max-h-52 overflow-y-auto">
+                                        {filteredTagOptions.map((tag) => (
+                                            <button
+                                                key={tag}
+                                                type="button"
+                                                onClick={() => handleAddTag(tag)}
+                                                className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                            >
+                                                <span className="truncate">{tag}</span>
+                                                <Check className="size-3.5 text-muted-foreground" />
+                                            </button>
+                                        ))}
+                                        {filteredTagOptions.length === 0 && (
+                                            <div className="px-2 py-3 text-xs text-muted-foreground">
+                                                {tagInputValue.trim() ? tForm('tagsCreateHint') : tForm('tagsNoOptions')}
+                                            </div>
+                                        )}
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                            {values.tags.length > 0 ? (
+                                <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto rounded-xl border border-border bg-muted/30 p-2">
+                                    {values.tags.map((tag) => (
+                                        <Badge key={tag} variant="secondary" className="max-w-full">
+                                            <span className="truncate">{tag}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveTag(tag)}
+                                                className="ml-1 rounded-sm opacity-70 hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring"
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        </Badge>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-muted-foreground">{t('tagsEmptyHint')}</p>
+                            )}
+                        </div>
+                    </BatchSelectRow>
                     <BatchBooleanRow
                         checked={fields.auto_check}
                         onCheckedChange={(checked) => updateField('auto_check', checked)}

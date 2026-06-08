@@ -33,6 +33,7 @@ function buildChannelFormData(channel: Channel): ChannelFormData {
         type: channel.type,
         enabled: channel.enabled,
         base_urls: channel.base_urls?.length ? channel.base_urls : [{ url: '', delay: 0 }],
+        tags: channel.tags ?? [],
         custom_header: channel.custom_header ?? [],
         channel_proxy: channel.channel_proxy ?? '',
         param_override: channel.param_override ?? '',
@@ -76,6 +77,8 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
         JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
     const headersEqual = (a: Channel['custom_header'] | undefined, b: Channel['custom_header'] | undefined) =>
         JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
+    const tagsEqual = (a: string[] | undefined, b: string[] | undefined) =>
+        JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
 
     const handleUpdate = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -90,6 +93,9 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                 url: u.url.trim(),
                 delay: Number(u.delay || 0),
             }));
+        }
+        if (!tagsEqual(formData.tags, channel.tags)) {
+            req.tags = Array.from(new Set((formData.tags ?? []).map((tag) => tag.trim()).filter(Boolean)));
         }
         if (formData.key_mode !== channel.key_mode) req.key_mode = formData.key_mode;
         if (formData.rpm !== (channel.rpm ?? 0)) req.rpm = formData.rpm;
@@ -342,6 +348,21 @@ export function CardContent({ channel, stats }: { channel: Channel; stats: Stats
                                         </div>
                                     </dl>
                                 </section>
+
+                                {channel.tags.length > 0 && (
+                                    <section className="space-y-3">
+                                        <h4 className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                            {t('sections.tags')}
+                                        </h4>
+                                        <div className="flex flex-wrap gap-1.5 rounded-2xl border bg-card p-3">
+                                            {channel.tags.map((tag) => (
+                                                <Badge key={tag} variant="secondary" className="max-w-full">
+                                                    <span className="truncate">{tag}</span>
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    </section>
+                                )}
 
                                 {/* Base URLs */}
                                 <section className="space-y-3">

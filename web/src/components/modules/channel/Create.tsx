@@ -19,6 +19,7 @@ export function CreateDialogContent() {
         custom_header: [],
         channel_proxy: '',
         param_override: '',
+        tags: [],
         keys: [{ enabled: true, channel_key: '', remark: '', priority: 1, weight: 1 }],
         key_mode: GroupMode.RoundRobin,
         rpm: 10,
@@ -51,6 +52,7 @@ export function CreateDialogContent() {
         const normalizedHeaders = (formData.custom_header ?? [])
             .map((h) => ({ header_key: h.header_key.trim(), header_value: h.header_value }))
             .filter((h) => h.header_key && h.header_value !== '');
+        const normalizedTags = Array.from(new Set((formData.tags ?? []).map((tag) => tag.trim()).filter(Boolean)));
 
         const channelProxy = formData.channel_proxy.trim();
         const paramOverride = formData.param_override.trim();
@@ -60,6 +62,7 @@ export function CreateDialogContent() {
                 type: formData.type,
                 enabled: formData.enabled,
                 base_urls: normalizedBaseUrls,
+                tags: normalizedTags,
                 keys: normalizedKeys,
                 key_mode: formData.key_mode,
                 rpm: formData.rpm,
@@ -83,6 +86,7 @@ export function CreateDialogContent() {
                         custom_header: [],
                         channel_proxy: '',
                         param_override: '',
+                        tags: [],
                         keys: [{ enabled: true, channel_key: '', remark: '', priority: 1, weight: 1 }],
                         key_mode: GroupMode.RoundRobin,
                         rpm: 10,

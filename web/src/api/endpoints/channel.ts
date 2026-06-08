@@ -61,6 +61,7 @@ export type Channel = {
     type: ChannelType;
     enabled: boolean;
     base_urls: BaseUrl[];
+    tags: string[];
     keys: ChannelKey[];
     key_mode: GroupMode;
     rpm: number;
@@ -78,10 +79,11 @@ export type Channel = {
 };
 
 // Internal type: backend may return null for slice fields; normalize to [] in select()
-type ChannelServer = Omit<Channel, 'base_urls' | 'custom_header' | 'keys'> & {
+type ChannelServer = Omit<Channel, 'base_urls' | 'custom_header' | 'keys' | 'tags'> & {
     base_urls: BaseUrl[] | null;
     custom_header: CustomHeader[] | null;
     keys: ChannelKey[] | null;
+    tags: string[] | null;
 };
 
 function sortChannelKeys(keys: ChannelKey[] | null | undefined): ChannelKey[] {
@@ -101,6 +103,7 @@ export type CreateChannelRequest = {
     type: ChannelType;
     enabled?: boolean;
     base_urls: BaseUrl[];
+    tags?: string[];
     keys: Array<Pick<ChannelKey, 'enabled' | 'channel_key' | 'remark' | 'priority' | 'weight'>>;
     key_mode?: GroupMode;
     rpm?: number;
@@ -125,6 +128,7 @@ export type UpdateChannelRequest = {
     type?: ChannelType;
     enabled?: boolean;
     base_urls?: BaseUrl[];
+    tags?: string[];
     key_mode?: GroupMode;
     rpm?: number;
     model?: string;
@@ -150,6 +154,7 @@ export type BatchDeleteChannelRequest = {
 export type BatchUpdateChannelRequest = {
     ids: number[];
     enabled?: boolean;
+    tags?: string[];
     key_mode?: GroupMode;
     rpm?: number;
     proxy?: boolean;
@@ -199,6 +204,7 @@ export function useChannelList() {
                 base_urls: item.base_urls ?? [],
                 custom_header: item.custom_header ?? [],
                 keys: sortChannelKeys(item.keys),
+                tags: item.tags ?? [],
             }) satisfies Channel,
             formatted: {
                 input_token: formatCount(item.stats.input_token),

@@ -3,6 +3,7 @@ package op
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/1229984599/octopus/internal/db"
@@ -30,6 +31,7 @@ func ChannelCreate(channel *model.Channel, ctx context.Context) error {
 		channel.KeyMode = model.GroupModeRoundRobin
 	}
 	channel.RPM = normalizeNonNegative(channel.RPM)
+	channel.Tags = normalizeChannelTags(channel.Tags)
 	autoCheck := channel.AutoCheck
 	for i := range channel.Keys {
 		channel.Keys[i].Priority = normalizePositive(channel.Keys[i].Priority, i+1)
@@ -190,6 +192,10 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 	if req.BaseUrls != nil {
 		selectFields = append(selectFields, "base_urls")
 		updates.BaseUrls = *req.BaseUrls
+	}
+	if req.Tags != nil {
+		selectFields = append(selectFields, "tags")
+		updates.Tags = normalizeChannelTags(*req.Tags)
 	}
 	if req.KeyMode != nil {
 		selectFields = append(selectFields, "key_mode")
@@ -450,6 +456,27 @@ func ChannelGet(id int, ctx context.Context) (*model.Channel, error) {
 		return nil, fmt.Errorf("channel not found")
 	}
 	return &channel, nil
+}
+
+func normalizeChannelTags(tags []string) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(tags))
+	result := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		trimmed := strings.TrimSpace(tag)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
 }
 
 func channelRefreshCache(ctx context.Context) error {

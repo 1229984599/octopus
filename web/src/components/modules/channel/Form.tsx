@@ -1,4 +1,4 @@
-import { AutoGroupType, ChannelType, GroupMode, type Channel, type ChannelKeyCheckResult, useCheckChannelKeys, useFetchModel, useUpdateChannel } from '@/api/endpoints/channel';
+import { AutoGroupType, ChannelType, GroupMode, type Channel, type ChannelKeyCheckResult, useChannelList, useCheckChannelKeys, useFetchModel, useUpdateChannel } from '@/api/endpoints/channel';
 import { cn, formatMoney } from '@/lib/utils';
 import {
     Select,
@@ -15,7 +15,7 @@ import { toast } from '@/components/common/Toast';
 import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ban, Check, GripVertical, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CheckResultDetail } from '@/components/common/CheckResultDetail';
 
 export interface ChannelKeyFormItem {
@@ -43,6 +43,7 @@ export interface ChannelFormData {
     model: string;
     custom_model: string;
     enabled: boolean;
+    tags: string[];
     proxy: boolean;
     auto_sync: boolean;
     auto_check: boolean;
@@ -84,6 +85,7 @@ export function ChannelForm({
 }: ChannelFormProps) {
     const t = useTranslations('channel.form');
     const keyT = useTranslations('channel.detail.keyCheck');
+    const { data: channelsData } = useChannelList();
 
     // Ensure the form always shows at least 1 row for base_urls / keys / custom_header.
     // This avoids "empty list" UI and also keeps URL + APIKEY layout consistent.
@@ -118,6 +120,8 @@ export function ChannelForm({
         [autoModels, customModels]
     );
     const [inputValue, setInputValue] = useState('');
+    const [tagInputValue, setTagInputValue] = useState('');
+    const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
     const [draggedKeyIndex, setDraggedKeyIndex] = useState<number | null>(null);
     const [selectedKeyIds, setSelectedKeyIds] = useState<Set<number>>(new Set());
     const [checkModel, setCheckModel] = useState('');
@@ -152,6 +156,24 @@ export function ChannelForm({
         if (!term) return checkModelOptions;
         return checkModelOptions.filter((model) => model.toLowerCase().includes(term));
     }, [checkModelOptions, modelSearch]);
+    const existingTagOptions = useMemo(() => {
+        const tags = new Set<string>();
+        channelsData?.forEach((item) => {
+            item.raw.tags.forEach((tag) => {
+                const trimmed = tag.trim();
+                if (trimmed) tags.add(trimmed);
+            });
+        });
+        return Array.from(tags).sort((a, b) => a.localeCompare(b));
+    }, [channelsData]);
+    const filteredTagOptions = useMemo(() => {
+        const selected = new Set((formData.tags ?? []).map((tag) => tag.toLowerCase()));
+        const term = tagInputValue.trim().toLowerCase();
+        return existingTagOptions.filter((tag) => {
+            if (selected.has(tag.toLowerCase())) return false;
+            return !term || tag.toLowerCase().includes(term);
+        });
+    }, [existingTagOptions, formData.tags, tagInputValue]);
     const invalidKeyIds = useMemo(
         () => (formData.keys ?? [])
             .filter((key) => typeof key.id === 'number' && (key.status_code === 401 || key.status_code === 403))
@@ -216,6 +238,38 @@ export function ChannelForm({
             updateModels(autoModels, [...customModels, trimmedModel]);
         }
         setInputValue('');
+    };
+
+    const normalizeTags = (tags: string[]) => {
+        const seen = new Set<string>();
+        const normalized: string[] = [];
+        for (const tag of tags) {
+            const trimmed = tag.trim();
+            if (!trimmed) continue;
+            const key = trimmed.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            normalized.push(trimmed);
+        }
+        return normalized;
+    };
+
+    const handleAddTag = (tag: string) => {
+        const nextTags = normalizeTags([...(formData.tags ?? []), tag]);
+        onFormDataChange({ ...formData, tags: nextTags });
+        setTagInputValue('');
+        setTagPopoverOpen(false);
+    };
+
+    const handleRemoveTag = (tag: string) => {
+        onFormDataChange({ ...formData, tags: (formData.tags ?? []).filter((item) => item !== tag) });
+    };
+
+    const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            if (tagInputValue.trim()) handleAddTag(tagInputValue);
+        }
     };
 
     const handleRemoveAutoModel = (model: string) => {
@@ -458,6 +512,82 @@ export function ChannelForm({
                         </SelectContent>
                     </Select>
                 </div>
+            </div>
+
+            <div className="space-y-2">
+                <label htmlFor={`${idPrefix}-tags`} className="text-sm font-medium text-card-foreground">
+                    {t('tags')}
+                </label>
+                <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                    <PopoverAnchor asChild>
+                        <div className="relative">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                id={`${idPrefix}-tags`}
+                                type="text"
+                                value={tagInputValue}
+                                onFocus={() => setTagPopoverOpen(true)}
+                                onChange={(event) => {
+                                    setTagInputValue(event.target.value);
+                                    setTagPopoverOpen(true);
+                                }}
+                                onKeyDown={handleTagInputKeyDown}
+                                placeholder={t('tagsPlaceholder')}
+                                className="rounded-xl pl-9 pr-10"
+                            />
+                            {tagInputValue.trim() && (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleAddTag(tagInputValue)}
+                                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-lg p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                    title={t('tagsAdd')}
+                                >
+                                    <Plus className="size-4" />
+                                </Button>
+                            )}
+                        </div>
+                    </PopoverAnchor>
+                    <PopoverContent align="start" className="w-[--radix-popover-trigger-width] min-w-72 rounded-xl p-2">
+                        <div className="max-h-56 overflow-y-auto">
+                            {filteredTagOptions.map((tag) => (
+                                <button
+                                    key={tag}
+                                    type="button"
+                                    onClick={() => handleAddTag(tag)}
+                                    className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                >
+                                    <span className="truncate">{tag}</span>
+                                    <Check className="size-3.5 text-muted-foreground" />
+                                </button>
+                            ))}
+                            {filteredTagOptions.length === 0 && (
+                                <div className="px-2 py-3 text-xs text-muted-foreground">
+                                    {tagInputValue.trim() ? t('tagsCreateHint') : t('tagsNoOptions')}
+                                </div>
+                            )}
+                        </div>
+                    </PopoverContent>
+                </Popover>
+                {(formData.tags ?? []).length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 rounded-xl border border-border bg-muted/30 p-2">
+                        {formData.tags.map((tag) => (
+                            <Badge key={tag} variant="secondary" className="max-w-full">
+                                <span className="truncate">{tag}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveTag(tag)}
+                                    className="ml-1 rounded-sm opacity-70 hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            </Badge>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-xs text-muted-foreground">{t('tagsHint')}</p>
+                )}
             </div>
 
             <div className="space-y-2">

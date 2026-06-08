@@ -204,6 +204,7 @@ func batchUpdateChannel(c *gin.Context) {
 		updateReq := model.ChannelUpdateRequest{
 			ID:        id,
 			Enabled:   req.Enabled,
+			Tags:      req.Tags,
 			KeyMode:   req.KeyMode,
 			RPM:       req.RPM,
 			Proxy:     req.Proxy,
@@ -253,6 +254,7 @@ func normalizeChannelIDs(ids []int) ([]int, error) {
 
 func channelBatchUpdateHasFields(req *model.ChannelBatchUpdateRequest) bool {
 	return req.Enabled != nil ||
+		req.Tags != nil ||
 		req.KeyMode != nil ||
 		req.RPM != nil ||
 		req.Proxy != nil ||

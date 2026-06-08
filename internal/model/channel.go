@@ -35,6 +35,7 @@ type Channel struct {
 	Type          llm.APIFormat  `json:"type"`
 	Enabled       bool           `json:"enabled" gorm:"default:true"`
 	BaseUrls      []BaseUrl      `json:"base_urls" gorm:"serializer:json"`
+	Tags          []string       `json:"tags" gorm:"serializer:json"`
 	Keys          []ChannelKey   `json:"keys" gorm:"foreignKey:ChannelID"`
 	KeyMode       GroupMode      `json:"key_mode" gorm:"default:1"`
 	RPM           int            `json:"rpm" gorm:"default:0"`
@@ -180,6 +181,7 @@ type ChannelUpdateRequest struct {
 	Type          *llm.APIFormat  `json:"type,omitempty"`
 	Enabled       *bool           `json:"enabled,omitempty"`
 	BaseUrls      *[]BaseUrl      `json:"base_urls,omitempty"`
+	Tags          *[]string       `json:"tags,omitempty"`
 	KeyMode       *GroupMode      `json:"key_mode,omitempty"`
 	RPM           *int            `json:"rpm,omitempty"`
 	Model         *string         `json:"model,omitempty"`
@@ -205,6 +207,7 @@ type ChannelBatchDeleteRequest struct {
 type ChannelBatchUpdateRequest struct {
 	IDs       []int          `json:"ids" binding:"required"`
 	Enabled   *bool          `json:"enabled,omitempty"`
+	Tags      *[]string      `json:"tags,omitempty"`
 	KeyMode   *GroupMode     `json:"key_mode,omitempty"`
 	RPM       *int           `json:"rpm,omitempty"`
 	Proxy     *bool          `json:"proxy,omitempty"`
