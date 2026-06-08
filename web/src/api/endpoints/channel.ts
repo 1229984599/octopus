@@ -171,6 +171,11 @@ export type ChannelKeyCheckResult = {
     error?: string;
 };
 
+export type ChannelTagSummary = {
+    tag: string;
+    count: number;
+};
+
 export type FetchModelRequest = {
     type: ChannelType;
     base_urls: BaseUrl[];
@@ -350,6 +355,49 @@ export function useBatchUpdateChannels() {
         },
         onError: (error) => {
             logger.error('渠道批量更新失败:', error);
+        },
+    });
+}
+
+export function useChannelTags() {
+    return useQuery({
+        queryKey: ['channels', 'tags'],
+        queryFn: async () => {
+            return apiClient.get<ChannelTagSummary[]>('/api/v1/channel/tags');
+        },
+    });
+}
+
+export function useRenameChannelTag() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (data: { old_tag: string; new_tag: string }) => {
+            return apiClient.post<ChannelServer[]>('/api/v1/channel/tags/rename', data);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
+            queryClient.invalidateQueries({ queryKey: ['channels', 'tags'] });
+        },
+        onError: (error) => {
+            logger.error('渠道标签重命名失败:', error);
+        },
+    });
+}
+
+export function useDeleteChannelTag() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (data: { tag: string }) => {
+            return apiClient.post<ChannelServer[]>('/api/v1/channel/tags/delete-unused', data);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
+            queryClient.invalidateQueries({ queryKey: ['channels', 'tags'] });
+        },
+        onError: (error) => {
+            logger.error('渠道标签删除失败:', error);
         },
     });
 }

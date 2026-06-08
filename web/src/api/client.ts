@@ -27,6 +27,31 @@ const handleError = (error: ApiError) => {
     }
 };
 
+function extractErrorMessage(data: unknown, fallback: string): string {
+    if (data && typeof data === 'object') {
+        const record = data as Record<string, unknown>;
+        for (const key of ['message', 'error', 'detail', 'msg']) {
+            const value = record[key];
+            if (typeof value === 'string' && value.trim()) {
+                return value;
+            }
+        }
+        const nested = record.data;
+        if (nested && typeof nested === 'object') {
+            const nestedMessage = extractErrorMessage(nested, '');
+            if (nestedMessage) return nestedMessage;
+        }
+        const json = JSON.stringify(data);
+        if (json && json !== '{}') return json;
+    }
+
+    if (typeof data === 'string' && data.trim()) {
+        return data;
+    }
+
+    return fallback || '请求失败，请稍后重试';
+}
+
 /**
  * 处理响应
  */
@@ -44,9 +69,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
         const error: ApiError = {
             code: response.status,
-            message: (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string')
-                ? data.message
-                : (typeof data === 'string' ? data : response.statusText),
+            message: extractErrorMessage(data, response.statusText || `HTTP ${response.status}`),
         };
 
         handleError(error);

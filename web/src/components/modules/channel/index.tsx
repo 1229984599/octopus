@@ -9,6 +9,8 @@ import {
     useBatchDeleteChannels,
     useBatchUpdateChannels,
     useChannelList,
+    useDeleteChannelTag,
+    useRenameChannelTag,
 } from '@/api/endpoints/channel';
 import { Card } from './Card';
 import { useSearchStore, useToolbarViewOptionsStore } from '@/components/modules/toolbar';
@@ -40,7 +42,7 @@ import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { toast } from '@/components/common/Toast';
 import { cn } from '@/lib/utils';
-import { Check, CheckSquare, Edit3, Plus, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, CheckSquare, Edit3, Plus, Search, Tags, Trash2, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 type ChannelListItem = {
@@ -86,6 +88,7 @@ export function Channel() {
     const [selectedTag, setSelectedTag] = useState<string>('all');
     const [editOpen, setEditOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
+    const [tagManagerOpen, setTagManagerOpen] = useState(false);
 
     const sortedChannels = useMemo(() => {
         if (!channelsData) return [];
@@ -133,6 +136,11 @@ export function Channel() {
     const visibleChannelIds = useMemo(() => visibleChannels.map((item) => item.raw.id), [visibleChannels]);
     const selectedIdArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
     const allVisibleSelected = visibleChannelIds.length > 0 && visibleChannelIds.every((id) => selectedIds.has(id));
+    const selectedChannels = useMemo(
+        () => sortedChannels.filter((item) => selectedIds.has(item.raw.id)),
+        [selectedIds, sortedChannels]
+    );
+    const hasActiveFilters = Boolean(searchTerm.trim()) || filter !== 'all' || selectedTag !== 'all';
 
     useEffect(() => {
         if (!channelsData) return;
@@ -207,6 +215,15 @@ export function Channel() {
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setTagManagerOpen(true)}
+                    >
+                        <Tags className="size-4" />
+                        {t('tagManage')}
+                    </Button>
                     {selectionMode && (
                         <>
                             <Button
@@ -253,6 +270,34 @@ export function Channel() {
                 </div>
             </div>
 
+            {hasActiveFilters && (
+                <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card/60 p-2 text-xs">
+                    <span className="px-1 text-muted-foreground">{t('activeFilters')}</span>
+                    {searchTerm.trim() && (
+                        <FilterChip label={t('searchChip', { value: searchTerm.trim() })} onClear={() => useSearchStore.getState().setSearchTerm(pageKey, '')} />
+                    )}
+                    {filter !== 'all' && (
+                        <FilterChip label={filter === 'enabled' ? t('enabledChip') : t('disabledChip')} onClear={() => useToolbarViewOptionsStore.getState().setChannelFilter('all')} />
+                    )}
+                    {selectedTag !== 'all' && (
+                        <FilterChip label={t('tagChip', { value: selectedTag })} onClear={() => setSelectedTag('all')} />
+                    )}
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 rounded-lg px-2 text-xs"
+                        onClick={() => {
+                            useSearchStore.getState().setSearchTerm(pageKey, '');
+                            useToolbarViewOptionsStore.getState().setChannelFilter('all');
+                            setSelectedTag('all');
+                        }}
+                    >
+                        {t('clearFilters')}
+                    </Button>
+                </div>
+            )}
+
             {availableTags.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card/60 p-2">
                     <button
@@ -285,29 +330,62 @@ export function Channel() {
             )}
 
             <div className="min-h-0 flex-1">
-                <VirtualizedGrid
-                    items={visibleChannels}
-                    layout={layout}
-                    columns={{ default: 1, md: 2, lg: 3 }}
-                    estimateItemHeight={216}
-                    getItemKey={(item: ChannelListItem) => `channel-${item.raw.id}`}
-                    renderItem={(item: ChannelListItem) => (
-                        <Card
-                            channel={item.raw}
-                            stats={item.formatted}
-                            layout={layout}
-                            selectionMode={selectionMode}
-                            selected={selectedIds.has(item.raw.id)}
-                            onToggleSelect={toggleSelect}
-                        />
-                    )}
-                />
+                {visibleChannels.length > 0 ? (
+                    <VirtualizedGrid
+                        items={visibleChannels}
+                        layout={layout}
+                        columns={{ default: 1, md: 2, lg: 3 }}
+                        estimateItemHeight={216}
+                        getItemKey={(item: ChannelListItem) => `channel-${item.raw.id}`}
+                        renderItem={(item: ChannelListItem) => (
+                            <Card
+                                channel={item.raw}
+                                stats={item.formatted}
+                                layout={layout}
+                                selectionMode={selectionMode}
+                                selected={selectedIds.has(item.raw.id)}
+                                onToggleSelect={toggleSelect}
+                            />
+                        )}
+                    />
+                ) : (
+                    <div className="flex h-full min-h-72 flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-card/50 p-8 text-center">
+                        <Search className="mb-3 size-8 text-muted-foreground" />
+                        <p className="text-sm font-medium">{channelsData?.length ? t('empty.filteredTitle') : t('empty.title')}</p>
+                        <p className="mt-1 max-w-sm text-xs text-muted-foreground">{channelsData?.length ? t('empty.filteredHint') : t('empty.hint')}</p>
+                        {hasActiveFilters && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-4 rounded-xl"
+                                onClick={() => {
+                                    useSearchStore.getState().setSearchTerm(pageKey, '');
+                                    useToolbarViewOptionsStore.getState().setChannelFilter('all');
+                                    setSelectedTag('all');
+                                }}
+                            >
+                                {t('clearFilters')}
+                            </Button>
+                        )}
+                    </div>
+                )}
             </div>
+
+            <TagManagerDialog
+                open={tagManagerOpen}
+                onOpenChange={setTagManagerOpen}
+                tags={availableTags.map((tag) => ({
+                    tag,
+                    count: sortedChannels.filter((item) => (item.raw.tags ?? []).includes(tag)).length,
+                }))}
+            />
 
             <BatchEditDialog
                 open={editOpen}
                 onOpenChange={setEditOpen}
                 selectedIds={selectedIdArray}
+                selectedChannels={selectedChannels.map((item) => item.raw)}
                 availableTags={availableTags}
                 onDone={() => {
                     setSelectionMode(false);
@@ -323,6 +401,7 @@ export function Channel() {
                             {t('deleteDescription', { count: selectedIds.size })}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
+                    <BatchDeletePreview channels={selectedChannels.map((item) => item.raw)} />
                     <AlertDialogFooter>
                         <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
                         <AlertDialogAction
@@ -343,12 +422,14 @@ function BatchEditDialog({
     open,
     onOpenChange,
     selectedIds,
+    selectedChannels,
     availableTags,
     onDone,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     selectedIds: number[];
+    selectedChannels: ChannelType[];
     availableTags: string[];
     onDone: () => void;
 }) {
@@ -377,6 +458,18 @@ function BatchEditDialog({
     }, [open]);
 
     const hasFields = Object.values(fields).some(Boolean);
+    const previewItems = useMemo(() => {
+        const items: string[] = [];
+        if (fields.enabled) items.push(t('previewEnabled', { value: values.enabled ? t('yes') : t('no') }));
+        if (fields.tags) items.push(t('previewTags', { value: values.tags.length ? values.tags.join(', ') : t('emptyTags') }));
+        if (fields.key_mode) items.push(t('previewKeyMode'));
+        if (fields.rpm) items.push(t('previewRPM', { value: Math.max(0, Number(values.rpm) || 0) }));
+        if (fields.proxy) items.push(t('previewProxy', { value: values.proxy ? t('yes') : t('no') }));
+        if (fields.auto_sync) items.push(t('previewAutoSync', { value: values.auto_sync ? t('yes') : t('no') }));
+        if (fields.auto_check) items.push(t('previewAutoCheck', { value: values.auto_check ? t('yes') : t('no') }));
+        if (fields.auto_group) items.push(t('previewAutoGroup'));
+        return items;
+    }, [fields, t, values]);
     const filteredTagOptions = useMemo(() => {
         const selected = new Set(values.tags.map((tag) => tag.toLowerCase()));
         const term = tagInputValue.trim().toLowerCase();
@@ -624,6 +717,34 @@ function BatchEditDialog({
                     </BatchSelectRow>
                 </div>
 
+                <div className="rounded-2xl border border-border bg-muted/25 p-3">
+                    <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                        <AlertTriangle className="size-4 text-amber-500" />
+                        {t('previewTitle')}
+                    </div>
+                    <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                        <div className="rounded-xl bg-background/70 p-2">
+                            <div className="mb-1 font-medium text-foreground">{t('previewChannels')}</div>
+                            <div className="max-h-24 space-y-1 overflow-y-auto">
+                                {selectedChannels.slice(0, 20).map((channel) => (
+                                    <div key={channel.id} className="truncate">{channel.name}</div>
+                                ))}
+                                {selectedChannels.length > 20 && <div>{t('previewMore', { count: selectedChannels.length - 20 })}</div>}
+                            </div>
+                        </div>
+                        <div className="rounded-xl bg-background/70 p-2">
+                            <div className="mb-1 font-medium text-foreground">{t('previewFields')}</div>
+                            {previewItems.length > 0 ? (
+                                <div className="space-y-1">
+                                    {previewItems.map((item) => <div key={item}>{item}</div>)}
+                                </div>
+                            ) : (
+                                <div>{t('noFields')}</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
                 <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                         {t('cancel')}
@@ -632,6 +753,173 @@ function BatchEditDialog({
                         {batchUpdateChannels.isPending ? t('saving') : t('save')}
                     </Button>
                 </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+    return (
+        <Badge variant="secondary" className="h-7 rounded-lg pl-2 pr-1 font-normal">
+            <span className="max-w-44 truncate">{label}</span>
+            <button
+                type="button"
+                onClick={onClear}
+                className="ml-1 rounded-md p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+            >
+                <X className="size-3" />
+            </button>
+        </Badge>
+    );
+}
+
+function BatchDeletePreview({ channels }: { channels: ChannelType[] }) {
+    const t = useTranslations('channel.batch');
+    const keyCount = channels.reduce((sum, channel) => sum + channel.keys.length, 0);
+    const modelCount = channels.reduce((sum, channel) => {
+        const models = `${channel.model},${channel.custom_model}`
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean);
+        return sum + new Set(models).size;
+    }, 0);
+
+    if (channels.length === 0) return null;
+
+    return (
+        <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-3 text-sm">
+            <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                    <div className="text-lg font-semibold">{channels.length}</div>
+                    <div className="text-xs text-muted-foreground">{t('previewChannelCount')}</div>
+                </div>
+                <div>
+                    <div className="text-lg font-semibold">{keyCount}</div>
+                    <div className="text-xs text-muted-foreground">{t('previewKeyCount')}</div>
+                </div>
+                <div>
+                    <div className="text-lg font-semibold">{modelCount}</div>
+                    <div className="text-xs text-muted-foreground">{t('previewModelCount')}</div>
+                </div>
+            </div>
+            <div className="mt-3 max-h-28 space-y-1 overflow-y-auto rounded-xl bg-background/70 p-2 text-xs text-muted-foreground">
+                {channels.map((channel) => (
+                    <div key={channel.id} className="truncate">{channel.name}</div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function TagManagerDialog({
+    open,
+    onOpenChange,
+    tags,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    tags: Array<{ tag: string; count: number }>;
+}) {
+    const t = useTranslations('channel.batch');
+    const renameTag = useRenameChannelTag();
+    const deleteTag = useDeleteChannelTag();
+    const [editingTag, setEditingTag] = useState('');
+    const [newTag, setNewTag] = useState('');
+
+    useEffect(() => {
+        if (!open) {
+            setEditingTag('');
+            setNewTag('');
+        }
+    }, [open]);
+
+    const submitRename = () => {
+        if (!editingTag || !newTag.trim()) return;
+        renameTag.mutate(
+            { old_tag: editingTag, new_tag: newTag.trim() },
+            {
+                onSuccess: () => {
+                    toast.success(t('tagRenameSuccess'));
+                    setEditingTag('');
+                    setNewTag('');
+                },
+                onError: (error) => toast.error(t('tagRenameFailed'), { description: error.message }),
+            }
+        );
+    };
+
+    const submitDelete = (tag: string) => {
+        deleteTag.mutate(
+            { tag },
+            {
+                onSuccess: () => toast.success(t('tagDeleteSuccess')),
+                onError: (error) => toast.error(t('tagDeleteFailed'), { description: error.message }),
+            }
+        );
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>{t('tagManageTitle')}</DialogTitle>
+                    <DialogDescription>{t('tagManageDescription')}</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                    {tags.length > 0 ? tags.map((item) => (
+                        <div key={item.tag} className="rounded-2xl border border-border bg-background/70 p-3">
+                            {editingTag === item.tag ? (
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                    <Input
+                                        value={newTag}
+                                        onChange={(event) => setNewTag(event.target.value)}
+                                        placeholder={t('tagRenamePlaceholder')}
+                                        className="rounded-xl"
+                                    />
+                                    <Button type="button" onClick={submitRename} disabled={renameTag.isPending || !newTag.trim()}>
+                                        {t('confirm')}
+                                    </Button>
+                                    <Button type="button" variant="outline" onClick={() => setEditingTag('')}>
+                                        {t('cancel')}
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="truncate text-sm font-medium">{item.tag}</div>
+                                        <div className="text-xs text-muted-foreground">{t('tagUsedCount', { count: item.count })}</div>
+                                    </div>
+                                    <div className="flex shrink-0 gap-2">
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                                setEditingTag(item.tag);
+                                                setNewTag(item.tag);
+                                            }}
+                                        >
+                                            {t('rename')}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="destructive"
+                                            onClick={() => submitDelete(item.tag)}
+                                            disabled={deleteTag.isPending}
+                                        >
+                                            {t('remove')}
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )) : (
+                        <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                            {t('tagManageEmpty')}
+                        </div>
+                    )}
+                </div>
             </DialogContent>
         </Dialog>
     );

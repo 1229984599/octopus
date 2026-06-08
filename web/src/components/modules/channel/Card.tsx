@@ -4,7 +4,7 @@ import {
     MorphingDialogContainer,
     MorphingDialogContent,
 } from '@/components/ui/morphing-dialog';
-import { Check, CheckCircle2, DollarSign, Key, Layers, MessageSquare, XCircle } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Clock, DollarSign, Key, Layers, MessageSquare, ShieldAlert, XCircle } from 'lucide-react';
 import { type StatsMetricsFormatted } from '@/api/endpoints/stats';
 import { type Channel, useEnableChannel } from '@/api/endpoints/channel';
 import { CardContent } from './CardContent';
@@ -48,6 +48,9 @@ export function Card({
         ...splitModels(channel.custom_model),
     ]).size;
     const enabledKeyCount = channel.keys.filter((item) => item.enabled).length;
+    const abnormalKeys = channel.keys.filter((item) => item.status_code && (item.status_code < 200 || item.status_code >= 300));
+    const invalidKeys = channel.keys.filter((item) => item.status_code === 401 || item.status_code === 403);
+    const lastCheckedAt = channel.keys.reduce((latest, item) => Math.max(latest, item.last_use_time_stamp || 0), 0);
     const visibleTags = channel.tags.slice(0, isListLayout ? 4 : 3);
     const hiddenTagCount = Math.max(0, channel.tags.length - visibleTags.length);
 
@@ -126,6 +129,32 @@ export function Card({
                 </div>
             )}
 
+            {(abnormalKeys.length > 0 || lastCheckedAt > 0) && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {abnormalKeys.length > 0 && (
+                        <HealthPill
+                            icon={<AlertTriangle className="size-3.5" />}
+                            tone="warn"
+                            label={t('abnormalKeys', { count: abnormalKeys.length })}
+                        />
+                    )}
+                    {invalidKeys.length > 0 && (
+                        <HealthPill
+                            icon={<ShieldAlert className="size-3.5" />}
+                            tone="danger"
+                            label={t('invalidKeys', { count: invalidKeys.length })}
+                        />
+                    )}
+                    {lastCheckedAt > 0 && (
+                        <HealthPill
+                            icon={<Clock className="size-3.5" />}
+                            tone="neutral"
+                            label={new Date(lastCheckedAt * 1000).toLocaleString()}
+                        />
+                    )}
+                </div>
+            )}
+
             {isListLayout ? (
                 <dl className="grid grid-cols-2 gap-2 lg:grid-cols-6">
                     <ChannelMetric icon={<MessageSquare className="size-3.5 text-primary" />} label={t('requestCount')}>
@@ -183,6 +212,22 @@ export function Card({
                 </MorphingDialogContent>
             </MorphingDialogContainer>
         </MorphingDialog>
+    );
+}
+
+function HealthPill({ icon, label, tone }: { icon: React.ReactNode; label: string; tone: 'warn' | 'danger' | 'neutral' }) {
+    return (
+        <div
+            className={cn(
+                'inline-flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]',
+                tone === 'warn' && 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+                tone === 'danger' && 'border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300',
+                tone === 'neutral' && 'border-border bg-muted/40 text-muted-foreground'
+            )}
+        >
+            {icon}
+            <span className="truncate">{label}</span>
+        </div>
     );
 }
 

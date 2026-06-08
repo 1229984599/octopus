@@ -58,6 +58,10 @@ func init() {
 		AddRoute(
 			router.NewRoute("/import", http.MethodPost).
 				Handle(importDB),
+		).
+		AddRoute(
+			router.NewRoute("/import/preview", http.MethodPost).
+				Handle(previewImportDB),
 		)
 }
 
@@ -183,38 +187,9 @@ func exportDB(c *gin.Context) {
 func importDB(c *gin.Context) {
 	var dump model.DBDump
 
-	contentType := c.GetHeader("Content-Type")
-	if strings.Contains(contentType, "multipart/form-data") {
-		fh, err := c.FormFile("file")
-		if err != nil {
-			resp.Error(c, http.StatusBadRequest, "missing upload file field 'file'")
-			return
-		}
-		f, err := fh.Open()
-		if err != nil {
-			resp.Error(c, http.StatusBadRequest, err.Error())
-			return
-		}
-		defer f.Close()
-		body, err := io.ReadAll(f)
-		if err != nil {
-			resp.Error(c, http.StatusBadRequest, err.Error())
-			return
-		}
-		if err := decodeDBDump(body, &dump); err != nil {
-			resp.Error(c, http.StatusBadRequest, err.Error())
-			return
-		}
-	} else {
-		body, err := io.ReadAll(c.Request.Body)
-		if err != nil {
-			resp.Error(c, http.StatusBadRequest, err.Error())
-			return
-		}
-		if err := decodeDBDump(body, &dump); err != nil {
-			resp.Error(c, http.StatusBadRequest, err.Error())
-			return
-		}
+	if err := readDBDumpFromRequest(c, &dump); err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	result, err := op.DBImportIncremental(c.Request.Context(), &dump)
@@ -226,6 +201,99 @@ func importDB(c *gin.Context) {
 	_ = op.InitCache()
 
 	resp.Success(c, result)
+}
+
+func previewImportDB(c *gin.Context) {
+	var dump model.DBDump
+
+	if err := readDBDumpFromRequest(c, &dump); err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	resp.Success(c, buildDBImportPreview(&dump))
+}
+
+func readDBDumpFromRequest(c *gin.Context, dump *model.DBDump) error {
+	contentType := c.GetHeader("Content-Type")
+	if strings.Contains(contentType, "multipart/form-data") {
+		fh, err := c.FormFile("file")
+		if err != nil {
+			return errors.New("missing upload file field 'file'")
+		}
+		f, err := fh.Open()
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		body, err := io.ReadAll(f)
+		if err != nil {
+			return err
+		}
+		return decodeDBDump(body, dump)
+	}
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return err
+	}
+	return decodeDBDump(body, dump)
+}
+
+func buildDBImportPreview(dump *model.DBDump) model.DBImportPreview {
+	preview := model.DBImportPreview{}
+	if dump == nil {
+		preview.Warnings = append(preview.Warnings, "导入文件为空")
+		return preview
+	}
+
+	preview.Version = dump.Version
+	preview.IncludeLogs = dump.IncludeLogs
+	preview.IncludeStats = dump.IncludeStats
+
+	addTable := func(table string, count int, action string, warning string) {
+		if count <= 0 {
+			return
+		}
+		preview.Tables = append(preview.Tables, model.DBImportPreviewTable{
+			Table:   table,
+			Count:   count,
+			Action:  action,
+			Warning: warning,
+		})
+		preview.TotalRows += count
+		if warning != "" {
+			preview.Warnings = append(preview.Warnings, warning)
+		}
+	}
+
+	addTable("channels", len(dump.Channels), "insert_skip_existing", "")
+	addTable("channel_keys", len(dump.ChannelKeys), "insert_skip_existing", "")
+	if len(dump.ProxyConfigurations) > 0 {
+		warning := "proxy_configurations 当前版本仅兼容识别，不会导入"
+		addTable("proxy_configurations", len(dump.ProxyConfigurations), "skip_compatibility", warning)
+		preview.SkippedTables = append(preview.SkippedTables, "proxy_configurations")
+	}
+	addTable("groups", len(dump.Groups), "insert_skip_existing", "")
+	addTable("group_items", len(dump.GroupItems), "insert_skip_existing", "")
+	addTable("llm_infos", len(dump.LLMInfos), "upsert_by_name", "")
+	addTable("api_keys", len(dump.APIKeys), "insert_skip_existing", "")
+	addTable("settings", len(dump.Settings), "upsert_by_key", "settings 会覆盖同名配置，请确认后导入")
+
+	if dump.IncludeStats {
+		addTable("stats_total", len(dump.StatsTotal), "upsert", "")
+		addTable("stats_daily", len(dump.StatsDaily), "upsert", "")
+		addTable("stats_hourly", len(dump.StatsHourly), "upsert", "")
+		addTable("stats_model", len(dump.StatsModel), "upsert", "")
+		addTable("stats_channel", len(dump.StatsChannel), "upsert", "")
+		addTable("stats_api_key", len(dump.StatsAPIKey), "upsert", "")
+	}
+
+	if dump.IncludeLogs {
+		addTable("relay_logs", len(dump.RelayLogs), "insert_skip_existing", "")
+	}
+
+	return preview
 }
 
 func decodeDBDump(body []byte, dump *model.DBDump) error {

@@ -458,6 +458,54 @@ func ChannelGet(id int, ctx context.Context) (*model.Channel, error) {
 	return &channel, nil
 }
 
+func ChannelTagReplace(oldTag, newTag string, ctx context.Context) ([]model.Channel, error) {
+	oldTag = strings.TrimSpace(oldTag)
+	newTag = strings.TrimSpace(newTag)
+	if oldTag == "" {
+		return nil, fmt.Errorf("old tag is required")
+	}
+	if newTag == "" {
+		return nil, fmt.Errorf("new tag is required")
+	}
+
+	updated := []model.Channel{}
+	for _, channel := range channelCache.GetAll() {
+		nextTags, changed := replaceChannelTag(channel.Tags, oldTag, newTag)
+		if !changed {
+			continue
+		}
+		req := &model.ChannelUpdateRequest{ID: channel.ID, Tags: &nextTags}
+		ch, err := ChannelUpdate(req, ctx)
+		if err != nil {
+			return nil, err
+		}
+		updated = append(updated, *ch)
+	}
+	return updated, nil
+}
+
+func ChannelTagDelete(tag string, ctx context.Context) ([]model.Channel, error) {
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return nil, fmt.Errorf("tag is required")
+	}
+
+	updated := []model.Channel{}
+	for _, channel := range channelCache.GetAll() {
+		nextTags, changed := removeChannelTag(channel.Tags, tag)
+		if !changed {
+			continue
+		}
+		req := &model.ChannelUpdateRequest{ID: channel.ID, Tags: &nextTags}
+		ch, err := ChannelUpdate(req, ctx)
+		if err != nil {
+			return nil, err
+		}
+		updated = append(updated, *ch)
+	}
+	return updated, nil
+}
+
 func normalizeChannelTags(tags []string) []string {
 	if len(tags) == 0 {
 		return nil
@@ -477,6 +525,41 @@ func normalizeChannelTags(tags []string) []string {
 		result = append(result, trimmed)
 	}
 	return result
+}
+
+func replaceChannelTag(tags []string, oldTag, newTag string) ([]string, bool) {
+	oldKey := strings.ToLower(strings.TrimSpace(oldTag))
+	if oldKey == "" {
+		return normalizeChannelTags(tags), false
+	}
+	changed := false
+	next := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		if strings.ToLower(strings.TrimSpace(tag)) == oldKey {
+			next = append(next, newTag)
+			changed = true
+		} else {
+			next = append(next, tag)
+		}
+	}
+	return normalizeChannelTags(next), changed
+}
+
+func removeChannelTag(tags []string, tag string) ([]string, bool) {
+	tagKey := strings.ToLower(strings.TrimSpace(tag))
+	if tagKey == "" {
+		return normalizeChannelTags(tags), false
+	}
+	changed := false
+	next := make([]string, 0, len(tags))
+	for _, item := range tags {
+		if strings.ToLower(strings.TrimSpace(item)) == tagKey {
+			changed = true
+			continue
+		}
+		next = append(next, item)
+	}
+	return normalizeChannelTags(next), changed
 }
 
 func channelRefreshCache(ctx context.Context) error {

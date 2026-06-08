@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +46,18 @@ func init() {
 		AddRoute(
 			router.NewRoute("/batch-update", http.MethodPost).
 				Handle(batchUpdateChannel),
+		).
+		AddRoute(
+			router.NewRoute("/tags", http.MethodGet).
+				Handle(listChannelTags),
+		).
+		AddRoute(
+			router.NewRoute("/tags/rename", http.MethodPost).
+				Handle(renameChannelTag),
+		).
+		AddRoute(
+			router.NewRoute("/tags/delete-unused", http.MethodPost).
+				Handle(deleteChannelTag),
 		).
 		AddRoute(
 			router.NewRoute("/delete/:id", http.MethodDelete).
@@ -262,6 +275,128 @@ func channelBatchUpdateHasFields(req *model.ChannelBatchUpdateRequest) bool {
 		req.AutoCheck != nil ||
 		req.AutoGroup != nil
 }
+
+type channelTagSummary struct {
+	Tag   string `json:"tag"`
+	Count int    `json:"count"`
+}
+
+func listChannelTags(c *gin.Context) {
+	channels, err := op.ChannelList(c.Request.Context())
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, buildChannelTagSummary(channels))
+}
+
+func renameChannelTag(c *gin.Context) {
+	var req struct {
+		OldTag string `json:"old_tag"`
+		NewTag string `json:"new_tag"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	if strings.TrimSpace(req.OldTag) == "" || strings.TrimSpace(req.NewTag) == "" {
+		resp.Error(c, http.StatusBadRequest, "old_tag and new_tag are required")
+		return
+	}
+	updated, err := op.ChannelTagReplace(req.OldTag, req.NewTag, c.Request.Context())
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, updated)
+}
+
+func deleteChannelTag(c *gin.Context) {
+	var req struct {
+		Tag string `json:"tag"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	if strings.TrimSpace(req.Tag) == "" {
+		resp.Error(c, http.StatusBadRequest, "tag is required")
+		return
+	}
+	updated, err := op.ChannelTagDelete(req.Tag, c.Request.Context())
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, updated)
+}
+
+func buildChannelTagSummary(channels []model.Channel) []channelTagSummary {
+	counts := make(map[string]int)
+	canonical := make(map[string]string)
+	for _, channel := range channels {
+		seenInChannel := map[string]struct{}{}
+		for _, tag := range channel.Tags {
+			trimmed := strings.TrimSpace(tag)
+			if trimmed == "" {
+				continue
+			}
+			key := strings.ToLower(trimmed)
+			if _, ok := seenInChannel[key]; ok {
+				continue
+			}
+			seenInChannel[key] = struct{}{}
+			if _, ok := canonical[key]; !ok {
+				canonical[key] = trimmed
+			}
+			counts[key]++
+		}
+	}
+
+	summary := make([]channelTagSummary, 0, len(counts))
+	for key, count := range counts {
+		summary = append(summary, channelTagSummary{Tag: canonical[key], Count: count})
+	}
+	sort.Slice(summary, func(i, j int) bool {
+		if summary[i].Count == summary[j].Count {
+			return summary[i].Tag < summary[j].Tag
+		}
+		return summary[i].Count > summary[j].Count
+	})
+	return summary
+}
+
+func renameChannelTags(tags []string, oldTag, newTag string) []string {
+	oldKey := strings.ToLower(strings.TrimSpace(oldTag))
+	next := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		if strings.ToLower(strings.TrimSpace(tag)) == oldKey {
+			next = append(next, newTag)
+		} else {
+			next = append(next, tag)
+		}
+	}
+	return normalizeHandlerTags(next)
+}
+
+func normalizeHandlerTags(tags []string) []string {
+	seen := make(map[string]struct{}, len(tags))
+	result := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		trimmed := strings.TrimSpace(tag)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
+}
+
 func fetchModel(c *gin.Context) {
 	var request model.Channel
 	if err := c.ShouldBindJSON(&request); err != nil {

@@ -204,6 +204,23 @@ export interface DBImportResult {
     rows_affected: Record<string, number>;
 }
 
+export interface DBImportPreviewTable {
+    table: string;
+    count: number;
+    action: string;
+    warning?: string;
+}
+
+export interface DBImportPreview {
+    version: number;
+    include_logs: boolean;
+    include_stats: boolean;
+    tables: DBImportPreviewTable[];
+    warnings: string[];
+    total_rows: number;
+    skipped_tables: string[];
+}
+
 export interface DBExportOptions {
     include_logs?: boolean;
     include_stats?: boolean;
@@ -329,6 +346,38 @@ export function useImportDB() {
         },
         onError: (error) => {
             logger.error('导入数据库失败:', error);
+        },
+    });
+}
+
+export function usePreviewImportDB() {
+    return useMutation({
+        mutationFn: async (file: File) => {
+            const form = new FormData();
+            form.append('file', file);
+
+            const res = await fetch(`${API_BASE_URL}/api/v1/setting/import/preview`, {
+                method: 'POST',
+                headers: {
+                    Authorization: getAuthHeader(),
+                },
+                body: form,
+            });
+
+            const contentType = res.headers.get('content-type') || '';
+            const isJson = contentType.includes('application/json');
+            const data = isJson ? await res.json() : await res.text();
+
+            if (!res.ok) {
+                const message = getMessageField(data) ?? (typeof data === 'string' ? data : res.statusText);
+                throw new Error(message || '导入预览失败');
+            }
+
+            const nested = getDataField<DBImportPreview>(data);
+            return nested ?? (data as DBImportPreview);
+        },
+        onError: (error) => {
+            logger.error('导入预览失败:', error);
         },
     });
 }

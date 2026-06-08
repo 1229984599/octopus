@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/1229984599/octopus/internal/model"
@@ -135,5 +136,41 @@ func TestDecodeDBDumpDefaultsImportedChannels(t *testing.T) {
 	}
 	if dump.Channels[1].AutoGroup != model.AutoGroupTypeNone {
 		t.Fatalf("expected explicit zero auto_group to be preserved, got %d", dump.Channels[1].AutoGroup)
+	}
+}
+
+func TestBuildDBImportPreviewCountsRowsAndWarnings(t *testing.T) {
+	preview := buildDBImportPreview(&model.DBDump{
+		Version:      1,
+		IncludeLogs:  true,
+		IncludeStats: false,
+		Channels: []model.Channel{
+			{ID: 1, Name: "a"},
+			{ID: 2, Name: "b"},
+		},
+		ChannelKeys: []model.ChannelKey{{ID: 1}},
+		ProxyConfigurations: []json.RawMessage{
+			[]byte(`{"id":1}`),
+		},
+		RelayLogs: []model.RelayLog{{ID: 1}},
+	})
+
+	if preview.Version != 1 {
+		t.Fatalf("expected version 1, got %d", preview.Version)
+	}
+	if preview.TotalRows != 5 {
+		t.Fatalf("expected total rows 5, got %d", preview.TotalRows)
+	}
+	if len(preview.Tables) < 3 {
+		t.Fatalf("expected preview tables, got %#v", preview.Tables)
+	}
+	if preview.Tables[0].Table != "channels" || preview.Tables[0].Count != 2 {
+		t.Fatalf("expected channels first with count 2, got %#v", preview.Tables[0])
+	}
+	if len(preview.SkippedTables) != 1 || preview.SkippedTables[0] != "proxy_configurations" {
+		t.Fatalf("expected proxy_configurations skipped, got %#v", preview.SkippedTables)
+	}
+	if len(preview.Warnings) == 0 {
+		t.Fatal("expected warning for skipped compatibility table")
 	}
 }

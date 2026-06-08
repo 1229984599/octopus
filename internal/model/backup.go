@@ -39,3 +39,20 @@ type DBImportResult struct {
 	// RowsAffected contains the rows affected for each table operation (insert/upsert depending on table).
 	RowsAffected map[string]int64 `json:"rows_affected"`
 }
+
+type DBImportPreviewTable struct {
+	Table   string `json:"table"`
+	Count   int    `json:"count"`
+	Action  string `json:"action"`
+	Warning string `json:"warning,omitempty"`
+}
+
+type DBImportPreview struct {
+	Version       int                    `json:"version"`
+	IncludeLogs   bool                   `json:"include_logs"`
+	IncludeStats  bool                   `json:"include_stats"`
+	Tables        []DBImportPreviewTable `json:"tables"`
+	Warnings      []string               `json:"warnings"`
+	TotalRows     int                    `json:"total_rows"`
+	SkippedTables []string               `json:"skipped_tables"`
+}

@@ -44,3 +44,33 @@ func TestChannelBatchUpdateHasFields(t *testing.T) {
 		t.Fatal("expected explicit empty tags to count as an update field")
 	}
 }
+
+func TestBuildChannelTagSummaryCountsAndSortsTags(t *testing.T) {
+	summary := buildChannelTagSummary([]model.Channel{
+		{ID: 1, Tags: []string{"公益", "备用"}},
+		{ID: 2, Tags: []string{"公益", "官方"}},
+		{ID: 3, Tags: []string{"  备用  ", "公益"}},
+	})
+
+	if len(summary) != 3 {
+		t.Fatalf("expected 3 tags, got %d", len(summary))
+	}
+	if summary[0].Tag != "公益" || summary[0].Count != 3 {
+		t.Fatalf("expected most used tag first, got %#v", summary[0])
+	}
+	if summary[1].Tag != "备用" || summary[1].Count != 2 {
+		t.Fatalf("expected second tag by count, got %#v", summary[1])
+	}
+}
+
+func TestRenameChannelTagReplacesCaseInsensitiveAndDeduplicates(t *testing.T) {
+	tags := renameChannelTags([]string{"公益", "备用"}, "公益", "备用")
+	if len(tags) != 1 || tags[0] != "备用" {
+		t.Fatalf("expected merge into one tag, got %#v", tags)
+	}
+
+	tags = renameChannelTags([]string{"公益", "官方"}, "公益", "公益站")
+	if len(tags) != 2 || tags[0] != "公益站" || tags[1] != "官方" {
+		t.Fatalf("expected renamed tag preserving order, got %#v", tags)
+	}
+}
