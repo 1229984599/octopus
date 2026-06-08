@@ -20,6 +20,11 @@ const (
 	AutoGroupTypeRegex AutoGroupType = 3 //正则匹配
 )
 
+const (
+	DefaultChannelRPM       = 10
+	DefaultChannelAutoGroup = AutoGroupTypeRegex
+)
+
 const ChannelTypeDoubao llm.APIFormat = "doubao"
 
 var channelKeyRoundRobinCounter uint64
@@ -120,6 +125,39 @@ type BaseUrl struct {
 type CustomHeader struct {
 	HeaderKey   string `json:"header_key"`
 	HeaderValue string `json:"header_value"`
+}
+
+type ChannelCreateRequest struct {
+	Channel
+}
+
+func (r *ChannelCreateRequest) UnmarshalJSON(data []byte) error {
+	var channel Channel
+	if err := json.Unmarshal(data, &channel); err != nil {
+		return err
+	}
+
+	var payload struct {
+		RPM       *int           `json:"rpm"`
+		AutoGroup *AutoGroupType `json:"auto_group"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+
+	if payload.RPM != nil {
+		channel.RPM = *payload.RPM
+	} else {
+		channel.RPM = DefaultChannelRPM
+	}
+	if payload.AutoGroup != nil {
+		channel.AutoGroup = *payload.AutoGroup
+	} else {
+		channel.AutoGroup = DefaultChannelAutoGroup
+	}
+
+	r.Channel = channel
+	return nil
 }
 
 type ChannelKey struct {

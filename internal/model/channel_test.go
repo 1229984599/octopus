@@ -81,3 +81,29 @@ func TestChannelUnmarshalAutoCheckPreservesFalse(t *testing.T) {
 		t.Fatal("expected explicit auto_check=false to be preserved")
 	}
 }
+
+func TestChannelCreateRequestDefaultsRPMAndAutoGroup(t *testing.T) {
+	var req ChannelCreateRequest
+	if err := json.Unmarshal([]byte(`{"name":"test","type":"openai/chat_completions"}`), &req); err != nil {
+		t.Fatal(err)
+	}
+	if req.RPM != DefaultChannelRPM {
+		t.Fatalf("expected default rpm %d, got %d", DefaultChannelRPM, req.RPM)
+	}
+	if req.AutoGroup != DefaultChannelAutoGroup {
+		t.Fatalf("expected default auto_group %d, got %d", DefaultChannelAutoGroup, req.AutoGroup)
+	}
+}
+
+func TestChannelCreateRequestPreservesExplicitZeroDefaults(t *testing.T) {
+	var req ChannelCreateRequest
+	if err := json.Unmarshal([]byte(`{"name":"test","type":"openai/chat_completions","rpm":0,"auto_group":0}`), &req); err != nil {
+		t.Fatal(err)
+	}
+	if req.RPM != 0 {
+		t.Fatalf("expected explicit rpm 0 to be preserved, got %d", req.RPM)
+	}
+	if req.AutoGroup != AutoGroupTypeNone {
+		t.Fatalf("expected explicit auto_group none to be preserved, got %d", req.AutoGroup)
+	}
+}
