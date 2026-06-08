@@ -6,6 +6,7 @@ const DEV_API_PROXY_URL = process.env.NEXT_DEV_API_PROXY_URL || "http://127.0.0.
 const createNextConfig = (phase: string): NextConfig => ({
   reactCompiler: true,
   ...(phase === PHASE_DEVELOPMENT_SERVER ? {
+    allowedDevOrigins: ["127.0.0.1", "localhost"],
     async rewrites() {
       return [
         {

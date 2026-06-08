@@ -79,7 +79,7 @@ function ModelPickerSection({
     }, [channels, normalizedSearch]);
 
     return (
-        <div className="rounded-xl border border-border/50 bg-muted/30 flex flex-col min-h-0">
+        <div className="flex min-h-[14rem] max-h-[18rem] flex-col rounded-xl border border-border/50 bg-muted/30 md:min-h-0 md:max-h-none">
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-2 border-b border-border/30 bg-muted/50">
                 <span className="min-w-0 justify-self-start text-sm font-medium text-foreground">
                     {t('form.addItem')}
@@ -211,7 +211,7 @@ function SortSection({
     const checkableCount = members.filter((member) => member.item_id).length;
 
     return (
-        <div className="rounded-xl border border-border/50 bg-muted/30 flex flex-col min-h-0">
+        <div className="flex min-h-[14rem] max-h-[18rem] flex-col rounded-xl border border-border/50 bg-muted/30 md:min-h-0 md:max-h-none">
             <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-border/30 bg-muted/50">
                 <span className="text-sm font-medium text-foreground">
                     {t('form.items')}
@@ -505,9 +505,9 @@ export function GroupEditor({
 
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 ">
-            <div className="flex-1 min-h-0 overflow-hidden pr-1">
-                <FieldGroup className="gap-4 flex flex-col min-h-0 h-full">
+        <form onSubmit={handleSubmit} className="flex h-full min-h-0 flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 md:overflow-hidden">
+                <FieldGroup className="flex min-h-0 flex-col gap-4 md:h-full">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                         <Field>
                             <FieldLabel htmlFor="group-name">{t('form.name')}</FieldLabel>
@@ -602,35 +602,41 @@ export function GroupEditor({
                             />
                         </Field>
 
-                        <Field className="justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
-                            <FieldLabel htmlFor="group-auto-check">{t('form.autoCheck')}</FieldLabel>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <div className="grid flex-1 grid-cols-4 gap-1">
+                            {([1, 2, 3, 4] as const).map((m) => (
+                                <button
+                                    key={m}
+                                    type="button"
+                                    onClick={() => setMode(m)}
+                                    className={cn(
+                                        'h-7 rounded-lg px-2 text-xs transition-colors',
+                                        mode === m ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'
+                                    )}
+                                >
+                                    {t(`mode.${MODE_LABELS[m]}`)}
+                                </button>
+                            ))}
+                        </div>
+
+                        <label
+                            htmlFor="group-auto-check"
+                            className="flex h-7 shrink-0 items-center justify-between gap-2 rounded-lg border border-border/50 bg-background/70 px-2.5 text-xs text-muted-foreground sm:w-auto"
+                        >
+                            <span className="whitespace-nowrap">{t('form.autoCheck')}</span>
                             <Switch
                                 id="group-auto-check"
                                 checked={autoCheck}
                                 onCheckedChange={setAutoCheck}
+                                className="scale-90"
                             />
-                        </Field>
+                        </label>
                     </div>
 
-                    {/* Mode */}
-                    <div className="flex gap-1">
-                        {([1, 2, 3, 4] as const).map((m) => (
-                            <button
-                                key={m}
-                                type="button"
-                                onClick={() => setMode(m)}
-                                className={cn(
-                                    'flex-1 py-1 text-xs rounded-lg transition-colors',
-                                    mode === m ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'
-                                )}
-                            >
-                                {t(`mode.${MODE_LABELS[m]}`)}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="flex-1 min-h-0">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full min-h-0">
+                    <div className="min-h-0 md:flex-1">
+                        <div className="grid min-h-0 grid-cols-1 gap-4 md:h-full md:grid-cols-2">
                             <ModelPickerSection
                                 modelChannels={modelChannels}
                                 selectedMembers={selectedMembers}

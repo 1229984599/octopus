@@ -137,9 +137,12 @@ export function Card({
                         {stats.request_count.formatted.value}
                         <span className="ml-1 text-xs text-muted-foreground">{stats.request_count.formatted.unit}</span>
                     </SummaryMetric>
-                    <SummaryMetric icon={<DollarSign className="h-5 w-5" />} label={t('totalCost')}>
-                        {stats.total_cost.formatted.value}
-                        <span className="ml-1 text-xs text-muted-foreground">{stats.total_cost.formatted.unit}</span>
+                    <SummaryMetric icon={<Key className="h-5 w-5" />} label={`${tSections('keys')} / ${tForm('model')}`}>
+                        <span className="inline-flex items-center gap-2 text-sm">
+                            <span>{channel.keys.length}</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span>{modelCount}</span>
+                        </span>
                     </SummaryMetric>
                 </dl>
             )}
