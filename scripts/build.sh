@@ -174,9 +174,9 @@ prepare_environment() {
     done
     log_success "Created output subdirectories: bin, docker, archives"
 
-    log_info "Tidying Go modules..."
-    if ! go mod tidy >/dev/null 2>&1; then
-        log_error "Failed to tidy Go modules"
+    log_info "Downloading Go modules..."
+    if ! go mod download; then
+        log_error "Failed to download Go modules"
         return 1
     fi
 

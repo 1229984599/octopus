@@ -53,6 +53,18 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: web/pnpm-lock.yaml
 
+      - name: Install release tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip unzip
+          go version
+          python3 --version
+          node --version
+          pnpm --version
+          git --version
+          zip -v | head -n 2
+          unzip -v | head -n 1
+
       - name: Build
         run: |
           sed -i 's/\r$//' scripts/build.sh scripts/updatePrice.py
