@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,6 +37,14 @@ func init() {
 		AddRoute(
 			router.NewRoute("/enable", http.MethodPost).
 				Handle(enableChannel),
+		).
+		AddRoute(
+			router.NewRoute("/batch-delete", http.MethodPost).
+				Handle(batchDeleteChannel),
+		).
+		AddRoute(
+			router.NewRoute("/batch-update", http.MethodPost).
+				Handle(batchUpdateChannel),
 		).
 		AddRoute(
 			router.NewRoute("/delete/:id", http.MethodDelete).
@@ -152,6 +161,104 @@ func deleteChannel(c *gin.Context) {
 		return
 	}
 	resp.Success(c, nil)
+}
+
+func batchDeleteChannel(c *gin.Context) {
+	var req model.ChannelBatchDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	ids, err := normalizeChannelIDs(req.IDs)
+	if err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	for _, id := range ids {
+		if err := op.ChannelDel(id, c.Request.Context()); err != nil {
+			resp.Error(c, http.StatusInternalServerError, "delete channel "+strconv.Itoa(id)+": "+err.Error())
+			return
+		}
+	}
+	resp.Success(c, nil)
+}
+
+func batchUpdateChannel(c *gin.Context) {
+	var req model.ChannelBatchUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	ids, err := normalizeChannelIDs(req.IDs)
+	if err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !channelBatchUpdateHasFields(&req) {
+		resp.Error(c, http.StatusBadRequest, "missing fields to update")
+		return
+	}
+
+	updated := make([]model.Channel, 0, len(ids))
+	for _, id := range ids {
+		updateReq := model.ChannelUpdateRequest{
+			ID:        id,
+			Enabled:   req.Enabled,
+			KeyMode:   req.KeyMode,
+			RPM:       req.RPM,
+			Proxy:     req.Proxy,
+			AutoSync:  req.AutoSync,
+			AutoCheck: req.AutoCheck,
+			AutoGroup: req.AutoGroup,
+		}
+		channel, err := op.ChannelUpdate(&updateReq, c.Request.Context())
+		if err != nil {
+			resp.Error(c, http.StatusInternalServerError, "update channel "+strconv.Itoa(id)+": "+err.Error())
+			return
+		}
+		stats := op.StatsChannelGet(channel.ID)
+		channel.Stats = &stats
+		updated = append(updated, *channel)
+		go func(channel *model.Channel) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			modelStr := channel.Model + "," + channel.CustomModel
+			modelArray := strings.Split(modelStr, ",")
+			helper.LLMPriceAddToDB(modelArray, ctx)
+			helper.ChannelBaseUrlDelayUpdate(channel, ctx)
+			helper.ChannelAutoGroup(channel, ctx)
+		}(channel)
+	}
+	resp.Success(c, updated)
+}
+
+func normalizeChannelIDs(ids []int) ([]int, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("missing channel ids")
+	}
+	seen := make(map[int]struct{}, len(ids))
+	result := make([]int, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, errors.New("invalid channel id")
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result, nil
+}
+
+func channelBatchUpdateHasFields(req *model.ChannelBatchUpdateRequest) bool {
+	return req.Enabled != nil ||
+		req.KeyMode != nil ||
+		req.RPM != nil ||
+		req.Proxy != nil ||
+		req.AutoSync != nil ||
+		req.AutoCheck != nil ||
+		req.AutoGroup != nil
 }
 func fetchModel(c *gin.Context) {
 	var request model.Channel

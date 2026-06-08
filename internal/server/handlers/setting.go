@@ -236,6 +236,7 @@ func decodeDBDump(body []byte, dump *model.DBDump) error {
 	if err := json.Unmarshal(body, dump); err != nil {
 		return err
 	}
+	source := body
 
 	if dump.Version == 0 &&
 		len(dump.Channels) == 0 &&
@@ -257,9 +258,40 @@ func decodeDBDump(body []byte, dump *model.DBDump) error {
 			Data    json.RawMessage `json:"data"`
 		}
 		if err := json.Unmarshal(body, &wrapper); err == nil && len(wrapper.Data) > 0 {
-			return json.Unmarshal(wrapper.Data, dump)
+			if err := json.Unmarshal(wrapper.Data, dump); err != nil {
+				return err
+			}
+			return applyDBDumpImportDefaults(wrapper.Data, dump)
 		}
 	}
 
+	return applyDBDumpImportDefaults(source, dump)
+}
+
+func applyDBDumpImportDefaults(body []byte, dump *model.DBDump) error {
+	var raw struct {
+		Channels []json.RawMessage `json:"channels"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return err
+	}
+	if len(raw.Channels) == 0 {
+		return nil
+	}
+	for i, rawChannel := range raw.Channels {
+		if i >= len(dump.Channels) {
+			break
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(rawChannel, &fields); err != nil {
+			return err
+		}
+		if _, ok := fields["rpm"]; !ok {
+			dump.Channels[i].RPM = model.DefaultChannelRPM
+		}
+		if _, ok := fields["auto_group"]; !ok {
+			dump.Channels[i].AutoGroup = model.DefaultChannelAutoGroup
+		}
+	}
 	return nil
 }

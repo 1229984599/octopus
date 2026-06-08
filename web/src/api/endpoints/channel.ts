@@ -143,6 +143,21 @@ export type UpdateChannelRequest = {
     keys_to_delete?: number[];
 };
 
+export type BatchDeleteChannelRequest = {
+    ids: number[];
+};
+
+export type BatchUpdateChannelRequest = {
+    ids: number[];
+    enabled?: boolean;
+    key_mode?: GroupMode;
+    rpm?: number;
+    proxy?: boolean;
+    auto_sync?: boolean;
+    auto_check?: boolean;
+    auto_group?: AutoGroupType;
+};
+
 export type ChannelKeyCheckResult = {
     id: number;
     status_code: number;
@@ -293,6 +308,42 @@ export function useDeleteChannel() {
         },
         onError: (error) => {
             logger.error('渠道删除失败:', error);
+        },
+    });
+}
+
+export function useBatchDeleteChannels() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (data: BatchDeleteChannelRequest) => {
+            return apiClient.post<null>('/api/v1/channel/batch-delete', data);
+        },
+        onSuccess: () => {
+            logger.log('渠道批量删除成功');
+            queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
+            queryClient.invalidateQueries({ queryKey: ['models', 'channel'] });
+        },
+        onError: (error) => {
+            logger.error('渠道批量删除失败:', error);
+        },
+    });
+}
+
+export function useBatchUpdateChannels() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (data: BatchUpdateChannelRequest) => {
+            return apiClient.post<ChannelServer[]>('/api/v1/channel/batch-update', data);
+        },
+        onSuccess: () => {
+            logger.log('渠道批量更新成功');
+            queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
+            queryClient.invalidateQueries({ queryKey: ['models', 'channel'] });
+        },
+        onError: (error) => {
+            logger.error('渠道批量更新失败:', error);
         },
     });
 }

@@ -91,3 +91,49 @@ func TestDecodeDBDumpSupportsNumericChannelType(t *testing.T) {
 		t.Fatalf("expected legacy type 1 to map to %q, got %q", llm.APIFormatOpenAIResponse, dump.Channels[0].Type)
 	}
 }
+
+func TestDecodeDBDumpDefaultsImportedChannels(t *testing.T) {
+	body := []byte(`{
+		"version": 1,
+		"channels": [
+			{
+				"id": 1,
+				"name": "missing-defaults",
+				"type": "openai/chat_completions",
+				"enabled": true,
+				"base_urls": [{"url": "https://api.example.com", "delay": 0}],
+				"keys": []
+			},
+			{
+				"id": 2,
+				"name": "explicit-zero",
+				"type": "openai/chat_completions",
+				"enabled": true,
+				"base_urls": [{"url": "https://api.example.com", "delay": 0}],
+				"keys": [],
+				"rpm": 0,
+				"auto_group": 0
+			}
+		]
+	}`)
+
+	var dump model.DBDump
+	if err := decodeDBDump(body, &dump); err != nil {
+		t.Fatalf("decode imported channels: %v", err)
+	}
+	if len(dump.Channels) != 2 {
+		t.Fatalf("expected two channels, got %d", len(dump.Channels))
+	}
+	if dump.Channels[0].RPM != model.DefaultChannelRPM {
+		t.Fatalf("expected missing rpm to default to %d, got %d", model.DefaultChannelRPM, dump.Channels[0].RPM)
+	}
+	if dump.Channels[0].AutoGroup != model.DefaultChannelAutoGroup {
+		t.Fatalf("expected missing auto_group to default to %d, got %d", model.DefaultChannelAutoGroup, dump.Channels[0].AutoGroup)
+	}
+	if dump.Channels[1].RPM != 0 {
+		t.Fatalf("expected explicit zero rpm to be preserved, got %d", dump.Channels[1].RPM)
+	}
+	if dump.Channels[1].AutoGroup != model.AutoGroupTypeNone {
+		t.Fatalf("expected explicit zero auto_group to be preserved, got %d", dump.Channels[1].AutoGroup)
+	}
+}

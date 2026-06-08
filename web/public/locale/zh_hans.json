@@ -513,6 +513,33 @@
                 "disabled": "渠道已禁用"
             }
         },
+        "batch": {
+            "title": "批量管理",
+            "hint": "选择渠道后可批量删除或修改常用配置",
+            "selectionHint": "点击渠道卡片可切换选中状态",
+            "selectedCount": "已选择 {count} 个渠道",
+            "enter": "批量操作",
+            "exit": "退出选择",
+            "selectVisible": "全选当前",
+            "clearVisible": "取消当前",
+            "edit": "批量修改",
+            "delete": "批量删除",
+            "editTitle": "批量修改渠道",
+            "editDescription": "将选中的 {count} 个渠道统一修改为以下配置",
+            "deleteTitle": "删除选中渠道",
+            "deleteDescription": "将删除选中的 {count} 个渠道，以及它们的 Key、统计和分组引用。",
+            "keyMode": "Key 使用策略",
+            "noFields": "请至少选择一个要修改的字段",
+            "save": "保存",
+            "saving": "保存中...",
+            "cancel": "取消",
+            "confirmDelete": "确认删除",
+            "deleting": "删除中...",
+            "editSuccess": "批量修改成功",
+            "editFailed": "批量修改失败",
+            "deleteSuccess": "批量删除成功",
+            "deleteFailed": "批量删除失败"
+        },
         "detail": {
             "title": {
                 "edit": "编辑渠道",

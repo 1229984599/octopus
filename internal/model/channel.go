@@ -198,6 +198,21 @@ type ChannelUpdateRequest struct {
 	KeysToDelete []int                     `json:"keys_to_delete,omitempty"`
 }
 
+type ChannelBatchDeleteRequest struct {
+	IDs []int `json:"ids" binding:"required"`
+}
+
+type ChannelBatchUpdateRequest struct {
+	IDs       []int          `json:"ids" binding:"required"`
+	Enabled   *bool          `json:"enabled,omitempty"`
+	KeyMode   *GroupMode     `json:"key_mode,omitempty"`
+	RPM       *int           `json:"rpm,omitempty"`
+	Proxy     *bool          `json:"proxy,omitempty"`
+	AutoSync  *bool          `json:"auto_sync,omitempty"`
+	AutoCheck *bool          `json:"auto_check,omitempty"`
+	AutoGroup *AutoGroupType `json:"auto_group,omitempty"`
+}
+
 type ChannelKeyAddRequest struct {
 	Enabled    bool   `json:"enabled"`
 	ChannelKey string `json:"channel_key" binding:"required"`
