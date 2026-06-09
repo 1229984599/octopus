@@ -17,6 +17,9 @@ export enum ChannelType {
     Gemini = 'gemini/contents',
     Volcengine = 'doubao',
     OpenAIEmbedding = 'openai/embeddings',
+    OpenAIImageGeneration = 'openai/image_generation',
+    OpenAIImageEdit = 'openai/image_edit',
+    OpenAIImageVariation = 'openai/image_variation',
 }
 
 /**
@@ -169,6 +172,8 @@ export type ChannelKeyCheckResult = {
     last_use_time_stamp?: number;
     ok: boolean;
     error?: string;
+    strategy?: string;
+    note?: string;
 };
 
 export type ChannelTagSummary = {
@@ -462,7 +467,7 @@ export function useCheckChannelKeys() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: async (data: { id: number; model: string; key_ids?: number[] }) => {
+        mutationFn: async (data: { id: number; model: string; key_ids?: number[]; mode?: string }) => {
             return apiClient.post<ChannelKeyCheckResult[]>('/api/v1/channel/check-keys', data);
         },
         onSuccess: () => {

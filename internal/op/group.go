@@ -16,6 +16,7 @@ var groupMap = cache.New[string, model.Group](16)
 func GroupList(ctx context.Context) ([]model.Group, error) {
 	groups := make([]model.Group, 0, groupCache.Len())
 	for _, group := range groupCache.GetAll() {
+		group = normalizeGroup(group)
 		groups = append(groups, group)
 	}
 	return groups, nil
@@ -34,6 +35,7 @@ func GroupGet(id int, ctx context.Context) (*model.Group, error) {
 	if !ok {
 		return nil, fmt.Errorf("group not found")
 	}
+	group = normalizeGroup(group)
 	return &group, nil
 }
 
@@ -42,6 +44,7 @@ func GroupGetEnabledMap(name string, ctx context.Context) (model.Group, error) {
 	if !ok {
 		return model.Group{}, fmt.Errorf("group not found")
 	}
+	group = normalizeGroup(group)
 	if len(group.Items) == 0 {
 		group.Items = nil
 		return group, nil
@@ -60,6 +63,9 @@ func GroupGetEnabledMap(name string, ctx context.Context) (model.Group, error) {
 }
 
 func GroupCreate(group *model.Group, ctx context.Context) error {
+	if group.Capability == "" {
+		group.Capability = model.GroupCapabilityAuto
+	}
 	autoCheck := group.AutoCheck
 	if err := db.GetDB().WithContext(ctx).Create(group).Error; err != nil {
 		return err
@@ -70,8 +76,7 @@ func GroupCreate(group *model.Group, ctx context.Context) error {
 		return err
 	}
 	group.AutoCheck = autoCheck
-	groupCache.Set(group.ID, *group)
-	groupMap.Set(group.Name, *group)
+	cacheGroup(*group)
 	return nil
 }
 
@@ -99,6 +104,13 @@ func GroupUpdate(req *model.GroupUpdateRequest, ctx context.Context) (*model.Gro
 	if req.Mode != nil {
 		selectFields = append(selectFields, "mode")
 		updates.Mode = *req.Mode
+	}
+	if req.Capability != nil {
+		selectFields = append(selectFields, "capability")
+		updates.Capability = *req.Capability
+		if updates.Capability == "" {
+			updates.Capability = model.GroupCapabilityAuto
+		}
 	}
 	if req.MatchRegex != nil {
 		selectFields = append(selectFields, "match_regex")
@@ -194,6 +206,7 @@ func GroupUpdate(req *model.GroupUpdateRequest, ctx context.Context) (*model.Gro
 	}
 
 	group, _ := groupCache.Get(req.ID)
+	group = normalizeGroup(group)
 	if oldName != "" && oldName != group.Name {
 		groupMap.Del(oldName)
 	}
@@ -411,8 +424,7 @@ func groupRefreshCache(ctx context.Context) error {
 		return err
 	}
 	for _, group := range groups {
-		groupCache.Set(group.ID, group)
-		groupMap.Set(group.Name, group)
+		cacheGroup(group)
 	}
 	return nil
 }
@@ -424,8 +436,7 @@ func groupRefreshCacheByID(id int, ctx context.Context) error {
 		First(&group, id).Error; err != nil {
 		return err
 	}
-	groupCache.Set(group.ID, group)
-	groupMap.Set(group.Name, group)
+	cacheGroup(group)
 	return nil
 }
 
@@ -441,8 +452,18 @@ func groupRefreshCacheByIDs(ids []int, ctx context.Context) error {
 		return err
 	}
 	for _, group := range groups {
-		groupCache.Set(group.ID, group)
-		groupMap.Set(group.Name, group)
+		cacheGroup(group)
 	}
 	return nil
+}
+
+func normalizeGroup(group model.Group) model.Group {
+	group.Capability = model.NormalizeGroupCapability(group.Capability)
+	return group
+}
+
+func cacheGroup(group model.Group) {
+	group = normalizeGroup(group)
+	groupCache.Set(group.ID, group)
+	groupMap.Set(group.Name, group)
 }

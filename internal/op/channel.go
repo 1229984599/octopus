@@ -21,12 +21,14 @@ var channelKeyCacheNeedUpdateLock sync.Mutex
 func ChannelList(ctx context.Context) ([]model.Channel, error) {
 	channels := make([]model.Channel, 0, channelCache.Len())
 	for _, channel := range channelCache.GetAll() {
+		channel = normalizeChannel(channel)
 		channels = append(channels, channel)
 	}
 	return channels, nil
 }
 
 func ChannelCreate(channel *model.Channel, ctx context.Context) error {
+	channel.Type = model.NormalizeChannelAPIFormat(channel.Type)
 	if channel.KeyMode == 0 {
 		channel.KeyMode = model.GroupModeRoundRobin
 	}
@@ -46,7 +48,7 @@ func ChannelCreate(channel *model.Channel, ctx context.Context) error {
 		return err
 	}
 	channel.AutoCheck = autoCheck
-	channelCache.Set(channel.ID, *channel)
+	channelCache.Set(channel.ID, normalizeChannel(*channel))
 	for _, k := range channel.Keys {
 		if k.ID != 0 {
 			channelKeyCache.Set(k.ID, k)
@@ -183,7 +185,7 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 	}
 	if req.Type != nil {
 		selectFields = append(selectFields, "type")
-		updates.Type = *req.Type
+		updates.Type = model.NormalizeChannelAPIFormat(*req.Type)
 	}
 	if req.Enabled != nil {
 		selectFields = append(selectFields, "enabled")
@@ -322,6 +324,7 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 	}
 
 	channel, _ := channelCache.Get(req.ID)
+	channel = normalizeChannel(channel)
 	return &channel, nil
 }
 
@@ -434,6 +437,7 @@ func ChannelDel(id int, ctx context.Context) error {
 func ChannelLLMList(ctx context.Context) ([]model.LLMChannel, error) {
 	models := []model.LLMChannel{}
 	for _, channel := range channelCache.GetAll() {
+		channel = normalizeChannel(channel)
 		modelNames := xstrings.SplitTrimCompact(",", channel.Model, channel.CustomModel)
 		for _, modelName := range modelNames {
 			if modelName == "" {
@@ -455,6 +459,7 @@ func ChannelGet(id int, ctx context.Context) (*model.Channel, error) {
 	if !ok {
 		return nil, fmt.Errorf("channel not found")
 	}
+	channel = normalizeChannel(channel)
 	return &channel, nil
 }
 
@@ -576,6 +581,7 @@ func channelRefreshCache(ctx context.Context) error {
 	channelKeyCacheNeedUpdate = make(map[int]struct{})
 	channelKeyCacheNeedUpdateLock.Unlock()
 	for _, channel := range channels {
+		channel = normalizeChannel(channel)
 		channelCache.Set(channel.ID, channel)
 		for _, k := range channel.Keys {
 			if k.ID != 0 {
@@ -601,6 +607,7 @@ func channelRefreshCacheByID(id int, ctx context.Context) error {
 		First(&channel, id).Error; err != nil {
 		return err
 	}
+	channel = normalizeChannel(channel)
 	channelCache.Set(channel.ID, channel)
 	for _, k := range channel.Keys {
 		if k.ID != 0 {
@@ -608,4 +615,9 @@ func channelRefreshCacheByID(id int, ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func normalizeChannel(channel model.Channel) model.Channel {
+	channel.Type = model.NormalizeChannelAPIFormat(channel.Type)
+	return channel
 }

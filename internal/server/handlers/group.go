@@ -111,9 +111,11 @@ func deleteGroup(c *gin.Context) {
 
 func checkGroupItem(c *gin.Context) {
 	var request struct {
-		GroupID int    `json:"group_id" binding:"required"`
-		ItemID  int    `json:"item_id" binding:"required"`
-		Model   string `json:"model,omitempty"`
+		GroupID    int                   `json:"group_id" binding:"required"`
+		ItemID     int                   `json:"item_id" binding:"required"`
+		Model      string                `json:"model,omitempty"`
+		Mode       string                `json:"mode,omitempty"`
+		Capability model.GroupCapability `json:"capability,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		resp.Error(c, http.StatusBadRequest, err.Error())
@@ -146,7 +148,14 @@ func checkGroupItem(c *gin.Context) {
 		modelName = item.ModelName
 	}
 	checkChannel := activeCheckChannel(*channel)
-	results := helper.CheckChannelKeys(ctx, checkChannel, modelName, nil)
+	capability := group.Capability
+	if request.Capability != "" {
+		capability = request.Capability
+	}
+	results := helper.CheckChannelKeysWithOptions(ctx, checkChannel, modelName, nil, helper.CheckOptions{
+		Mode:       helper.CheckMode(request.Mode),
+		Capability: capability,
+	})
 	if err := op.ChannelKeySaveDBByIDs(ctx, channelKeyCheckResultIDs(results)); err != nil {
 		resp.Error(c, http.StatusInternalServerError, err.Error())
 		return

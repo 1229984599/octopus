@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"sync/atomic"
 	"testing"
+
+	"github.com/looplj/axonhub/llm"
 )
 
 func TestChannelGetChannelKeyUsesFailoverPriority(t *testing.T) {
@@ -79,6 +81,16 @@ func TestChannelUnmarshalAutoCheckPreservesFalse(t *testing.T) {
 	}
 	if ch.AutoCheck {
 		t.Fatal("expected explicit auto_check=false to be preserved")
+	}
+}
+
+func TestChannelUnmarshalSupportsLegacyStringType(t *testing.T) {
+	var ch Channel
+	if err := json.Unmarshal([]byte(`{"id":1,"name":"legacy","type":"2"}`), &ch); err != nil {
+		t.Fatal(err)
+	}
+	if ch.Type != llm.APIFormatAnthropicMessage {
+		t.Fatalf("expected legacy string type 2 to map to %q, got %q", llm.APIFormatAnthropicMessage, ch.Type)
 	}
 }
 

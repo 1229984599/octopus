@@ -14,7 +14,7 @@ import type { SelectedMember } from './ItemList';
 import { MemberList } from './ItemList';
 import { GroupEditor, type GroupEditorValues } from './Editor';
 import { buildChannelNameByModelKey, modelChannelKey, MODE_LABELS } from './utils';
-import { GroupMode, type GroupUpdateRequest } from '@/api/endpoints/group';
+import { GroupCapability, GroupMode, type GroupUpdateRequest } from '@/api/endpoints/group';
 import {
     MorphingDialog,
     MorphingDialogClose,
@@ -54,6 +54,7 @@ function EditDialogContent({ group, displayMembers, isSubmitting, onSubmit }: Ed
                         name: group.name,
                         match_regex: group.match_regex ?? '',
                         mode: group.mode,
+                        capability: group.capability ?? GroupCapability.Auto,
                         first_token_time_out: group.first_token_time_out ?? 0,
                         session_keep_time: group.session_keep_time ?? 0,
                         auto_check: group.auto_check ?? true,
@@ -256,6 +257,7 @@ export function GroupCard({ group }: { group: Group }) {
 
         if (nextName && nextName !== group.name) payload.name = nextName;
         if (values.mode !== group.mode) payload.mode = values.mode;
+        if (values.capability !== (group.capability ?? GroupCapability.Auto)) payload.capability = values.capability;
         if (nextRegex !== (group.match_regex ?? '')) payload.match_regex = nextRegex;
         if (nextFirstTokenTimeOut !== (group.first_token_time_out ?? 0)) payload.first_token_time_out = nextFirstTokenTimeOut;
         if (nextSessionKeepTime !== (group.session_keep_time ?? 0)) payload.session_keep_time = nextSessionKeepTime;
@@ -276,7 +278,15 @@ export function GroupCard({ group }: { group: Group }) {
             },
             onError,
         });
-    }, [group.auto_check, group.first_token_time_out, group.session_keep_time, group.id, group.items, group.match_regex, group.mode, group.name, onSuccess, onError, updateGroup]);
+    }, [group.auto_check, group.capability, group.first_token_time_out, group.session_keep_time, group.id, group.items, group.match_regex, group.mode, group.name, onSuccess, onError, updateGroup]);
+
+    const capabilityLabel = {
+        [GroupCapability.Auto]: '自动',
+        [GroupCapability.Chat]: '文本',
+        [GroupCapability.ResponsesCodex]: 'Responses/Codex',
+        [GroupCapability.Embedding]: 'Embedding',
+        [GroupCapability.Image]: '图片',
+    }[group.capability ?? GroupCapability.Auto];
 
     return (
         <article className="flex flex-col rounded-3xl border border-border bg-card text-card-foreground p-4 custom-shadow">
@@ -288,6 +298,9 @@ export function GroupCard({ group }: { group: Group }) {
                         </TooltipTrigger>
                         <TooltipContent key={group.name}>{group.name}</TooltipContent>
                     </Tooltip>
+                    <span className="mt-1 inline-flex max-w-full rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        {capabilityLabel}
+                    </span>
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">

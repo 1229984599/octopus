@@ -35,6 +35,7 @@ func newInbound(format llm.APIFormat) transformer.Inbound {
 }
 
 func newOutbound(channelType llm.APIFormat, request *llm.Request, baseURL, key string) (transformer.Outbound, error) {
+	channelType = dbmodel.NormalizeChannelAPIFormat(channelType)
 	requestType := llm.RequestTypeChat
 	if request != nil && request.RequestType != "" {
 		requestType = request.RequestType

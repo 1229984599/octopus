@@ -16,26 +16,73 @@ import (
 	"github.com/looplj/axonhub/llm/transformer"
 )
 
+type CheckMode string
+type CheckStrategy string
+
+const (
+	CheckModeSmart               CheckMode = "smart"
+	CheckModeRealImageGeneration CheckMode = "real_image_generation"
+)
+
+const (
+	CheckStrategyChat                CheckStrategy = "chat"
+	CheckStrategyResponses           CheckStrategy = "responses"
+	CheckStrategyEmbedding           CheckStrategy = "embedding"
+	CheckStrategyImageAuthOnly       CheckStrategy = "image_auth_only"
+	CheckStrategyImageGenerationReal CheckStrategy = "image_generation_real"
+	CheckStrategyGemini              CheckStrategy = "gemini"
+	CheckStrategyAnthropic           CheckStrategy = "anthropic"
+)
+
 type ChannelKeyCheckResult struct {
 	ID               int    `json:"id"`
 	StatusCode       int    `json:"status_code"`
 	LastUseTimeStamp int64  `json:"last_use_time_stamp,omitempty"`
 	OK               bool   `json:"ok"`
 	Error            string `json:"error,omitempty"`
+	Strategy         string `json:"strategy,omitempty"`
+	Note             string `json:"note,omitempty"`
 }
 
 func CheckChannelKeys(ctx context.Context, channel model.Channel, modelName string, keyIDs []int) []ChannelKeyCheckResult {
+	return CheckChannelKeysWithMode(ctx, channel, modelName, keyIDs, CheckModeSmart)
+}
+
+func CheckChannelKeysWithMode(ctx context.Context, channel model.Channel, modelName string, keyIDs []int, mode CheckMode) []ChannelKeyCheckResult {
+	return CheckChannelKeysWithOptions(ctx, channel, modelName, keyIDs, CheckOptions{Mode: mode})
+}
+
+type CheckOptions struct {
+	Mode       CheckMode
+	Capability model.GroupCapability
+}
+
+func CheckChannelKeysWithOptions(ctx context.Context, channel model.Channel, modelName string, keyIDs []int, options CheckOptions) []ChannelKeyCheckResult {
 	selected := selectCheckKeys(channel.Keys, keyIDs)
 	results := make([]ChannelKeyCheckResult, 0, len(selected))
 	for _, key := range selected {
-		result := CheckChannelKey(ctx, channel, key, modelName)
+		result := CheckChannelKeyWithOptions(ctx, channel, key, modelName, options)
 		results = append(results, result)
 	}
 	return results
 }
 
 func CheckChannelKey(ctx context.Context, channel model.Channel, key model.ChannelKey, modelName string) ChannelKeyCheckResult {
-	result := ChannelKeyCheckResult{ID: key.ID}
+	return CheckChannelKeyWithMode(ctx, channel, key, modelName, CheckModeSmart)
+}
+
+func CheckChannelKeyWithMode(ctx context.Context, channel model.Channel, key model.ChannelKey, modelName string, mode CheckMode) ChannelKeyCheckResult {
+	return CheckChannelKeyWithOptions(ctx, channel, key, modelName, CheckOptions{Mode: mode})
+}
+
+func CheckChannelKeyWithOptions(ctx context.Context, channel model.Channel, key model.ChannelKey, modelName string, options CheckOptions) ChannelKeyCheckResult {
+	options.Mode = NormalizeCheckMode(options.Mode)
+	options.Capability = model.NormalizeGroupCapability(options.Capability)
+	strategy := SelectCheckStrategyForCapability(channel.Type, modelName, options.Mode, options.Capability)
+	result := ChannelKeyCheckResult{ID: key.ID, Strategy: string(strategy)}
+	if strategy == CheckStrategyImageAuthOnly {
+		result.Note = "图片模型默认仅执行鉴权/模型列表检测，未真实生成图片"
+	}
 	if strings.TrimSpace(key.ChannelKey) == "" {
 		result.Error = "key empty"
 		return result
@@ -51,7 +98,7 @@ func CheckChannelKey(ctx context.Context, channel model.Channel, key model.Chann
 		return result
 	}
 
-	req, err := buildKeyCheckRequest(ctx, channel, key.ChannelKey, modelName)
+	req, err := buildKeyCheckRequest(ctx, channel, key.ChannelKey, modelName, strategy)
 	if err != nil {
 		result.Error = err.Error()
 		return result
@@ -81,6 +128,90 @@ func CheckChannelKey(ctx context.Context, channel model.Channel, key model.Chann
 	return result
 }
 
+func NormalizeCheckMode(mode CheckMode) CheckMode {
+	switch mode {
+	case CheckModeRealImageGeneration:
+		return mode
+	default:
+		return CheckModeSmart
+	}
+}
+
+func SelectCheckStrategy(channelType llm.APIFormat, modelName string, mode CheckMode) CheckStrategy {
+	return SelectCheckStrategyForCapability(channelType, modelName, mode, model.GroupCapabilityAuto)
+}
+
+func SelectCheckStrategyForCapability(channelType llm.APIFormat, modelName string, mode CheckMode, capability model.GroupCapability) CheckStrategy {
+	mode = NormalizeCheckMode(mode)
+	if mode == CheckModeRealImageGeneration {
+		return CheckStrategyImageGenerationReal
+	}
+	if IsImageGenerationCapability(capability) || IsImageChannelType(channelType) || IsImageGenerationModel(modelName) {
+		return CheckStrategyImageAuthOnly
+	}
+	switch channelType {
+	case llm.APIFormatAnthropicMessage:
+		return CheckStrategyAnthropic
+	case llm.APIFormatGeminiContents:
+		return CheckStrategyGemini
+	case llm.APIFormatOpenAIEmbedding:
+		return CheckStrategyEmbedding
+	case llm.APIFormatOpenAIResponse:
+		return CheckStrategyResponses
+	}
+	if IsEmbeddingModel(modelName) {
+		return CheckStrategyEmbedding
+	}
+	if IsResponsesCodexModel(modelName) {
+		return CheckStrategyResponses
+	}
+	return CheckStrategyChat
+}
+
+func IsImageChannelType(channelType llm.APIFormat) bool {
+	switch channelType {
+	case llm.APIFormatOpenAIImageGeneration,
+		llm.APIFormatOpenAIImageEdit,
+		llm.APIFormatOpenAIImageVariation:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsImageGenerationCapability(capability model.GroupCapability) bool {
+	switch model.NormalizeGroupCapability(capability) {
+	case model.GroupCapabilityImage:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsImageGenerationModel(modelName string) bool {
+	name := strings.ToLower(strings.TrimSpace(modelName))
+	if name == "" {
+		return false
+	}
+	needles := []string{"gpt-image", "dall-e", "imagen", "image-generation", "image_generation", "flux", "midjourney", "stable-diffusion"}
+	for _, needle := range needles {
+		if strings.Contains(name, needle) {
+			return true
+		}
+	}
+	return strings.Contains(name, "image") && !strings.Contains(name, "vision")
+}
+
+func IsEmbeddingModel(modelName string) bool {
+	name := strings.ToLower(strings.TrimSpace(modelName))
+	return strings.Contains(name, "embedding") || strings.Contains(name, "embed")
+}
+
+func IsResponsesCodexModel(modelName string) bool {
+	name := strings.ToLower(strings.TrimSpace(modelName))
+	return strings.Contains(name, "codex") || strings.Contains(name, "responses")
+}
+
 func selectCheckKeys(keys []model.ChannelKey, ids []int) []model.ChannelKey {
 	if len(ids) == 0 {
 		selected := make([]model.ChannelKey, len(keys))
@@ -100,31 +231,33 @@ func selectCheckKeys(keys []model.ChannelKey, ids []int) []model.ChannelKey {
 	return selected
 }
 
-func buildKeyCheckRequest(ctx context.Context, channel model.Channel, key, modelName string) (*http.Request, error) {
+func buildKeyCheckRequest(ctx context.Context, channel model.Channel, key, modelName string, strategy CheckStrategy) (*http.Request, error) {
 	baseURL := channel.GetBaseUrl()
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, fmt.Errorf("base url is required")
 	}
-	switch channel.Type {
-	case llm.APIFormatAnthropicMessage:
+	switch strategy {
+	case CheckStrategyAnthropic:
 		return buildAnthropicKeyCheckRequest(ctx, baseURL, key, modelName)
-	case llm.APIFormatGeminiContents:
+	case CheckStrategyGemini:
 		return buildGeminiKeyCheckRequest(ctx, baseURL, key, modelName)
+	case CheckStrategyEmbedding:
+		return buildOpenAIEmbeddingKeyCheckRequest(ctx, baseURL, key, modelName)
+	case CheckStrategyResponses:
+		return buildOpenAIResponseKeyCheckRequest(ctx, baseURL, key, modelName)
+	case CheckStrategyImageAuthOnly:
+		return buildModelAuthCheckRequest(ctx, channel.Type, baseURL, key, modelName)
+	case CheckStrategyImageGenerationReal:
+		return buildImageGenerationCheckRequest(ctx, channel.Type, baseURL, key, modelName)
 	default:
-		return buildOpenAICompatibleKeyCheckRequest(ctx, channel.Type, baseURL, key, modelName)
+		return buildOpenAIChatKeyCheckRequest(ctx, channel.Type, baseURL, key, modelName)
 	}
 }
 
-func buildOpenAICompatibleKeyCheckRequest(ctx context.Context, channelType llm.APIFormat, baseURL, key, modelName string) (*http.Request, error) {
+func buildOpenAIChatKeyCheckRequest(ctx context.Context, channelType llm.APIFormat, baseURL, key, modelName string) (*http.Request, error) {
 	version := "v1"
 	if channelType == model.ChannelTypeDoubao {
 		version = "v3"
-	}
-	if channelType == llm.APIFormatOpenAIEmbedding {
-		return buildOpenAIEmbeddingKeyCheckRequest(ctx, baseURL, key, modelName)
-	}
-	if channelType == llm.APIFormatOpenAIResponse {
-		return buildOpenAIResponseKeyCheckRequest(ctx, baseURL, key, modelName)
 	}
 	url := transformer.NormalizeBaseURL(baseURL, version) + "/chat/completions"
 	body, _ := json.Marshal(map[string]any{
@@ -135,6 +268,85 @@ func buildOpenAICompatibleKeyCheckRequest(ctx context.Context, channelType llm.A
 		"stream":      false,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
+
+func buildModelAuthCheckRequest(ctx context.Context, channelType llm.APIFormat, baseURL, key, modelName string) (*http.Request, error) {
+	switch channelType {
+	case llm.APIFormatGeminiContents:
+		return buildGeminiModelAuthCheckRequest(ctx, baseURL, key)
+	case llm.APIFormatAnthropicMessage:
+		return buildAnthropicModelAuthCheckRequest(ctx, baseURL, key)
+	default:
+		return buildOpenAIModelAuthCheckRequest(ctx, channelType, baseURL, key)
+	}
+}
+
+func buildOpenAIModelAuthCheckRequest(ctx context.Context, channelType llm.APIFormat, baseURL, key string) (*http.Request, error) {
+	version := "v1"
+	if channelType == model.ChannelTypeDoubao {
+		version = "v3"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, transformer.NormalizeBaseURL(baseURL, version)+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
+
+func buildGeminiModelAuthCheckRequest(ctx context.Context, baseURL, key string) (*http.Request, error) {
+	normalized := transformer.NormalizeBaseURL(baseURL, "v1beta")
+	if strings.HasSuffix(strings.TrimRight(baseURL, "/"), "/v1") {
+		normalized = transformer.NormalizeBaseURL(baseURL, "")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, normalized+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Goog-Api-Key", key)
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
+
+func buildAnthropicModelAuthCheckRequest(ctx context.Context, baseURL, key string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, transformer.NormalizeBaseURL(baseURL, "v1")+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Api-Key", key)
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
+
+func buildImageGenerationCheckRequest(ctx context.Context, channelType llm.APIFormat, baseURL, key, modelName string) (*http.Request, error) {
+	switch channelType {
+	case llm.APIFormatOpenAIChatCompletion,
+		llm.APIFormatOpenAIResponse,
+		llm.APIFormatOpenAIImageGeneration,
+		llm.APIFormatOpenAIImageEdit,
+		llm.APIFormatOpenAIImageVariation:
+		return buildOpenAIImageGenerationCheckRequest(ctx, baseURL, key, modelName)
+	default:
+		return nil, fmt.Errorf("real image generation check is not supported for channel type %s; use default auth check", channelType)
+	}
+}
+
+func buildOpenAIImageGenerationCheckRequest(ctx context.Context, baseURL, key, modelName string) (*http.Request, error) {
+	body, _ := json.Marshal(map[string]any{
+		"model":  modelName,
+		"prompt": "A simple small blue square on a white background.",
+		"n":      1,
+		"size":   "256x256",
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, transformer.NormalizeBaseURL(baseURL, "v1")+"/images/generations", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

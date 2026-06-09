@@ -30,6 +30,22 @@ export interface ChannelKeyFormItem {
     weight?: number;
 }
 
+function isImageGenerationModel(model: string): boolean {
+    const name = model.trim().toLowerCase();
+    if (!name) return false;
+    const markers = ['gpt-image', 'dall-e', 'imagen', 'image-generation', 'image_generation', 'flux', 'midjourney', 'stable-diffusion'];
+    if (markers.some((marker) => name.includes(marker))) return true;
+    return name.includes('image') && !name.includes('vision');
+}
+
+function isImageChannelType(type: ChannelType): boolean {
+    return [
+        ChannelType.OpenAIImageGeneration,
+        ChannelType.OpenAIImageEdit,
+        ChannelType.OpenAIImageVariation,
+    ].includes(type);
+}
+
 export interface ChannelFormData {
     name: string;
     type: ChannelType;
@@ -136,6 +152,7 @@ export function ChannelForm({
     const showKeyWeight = formData.key_mode === GroupMode.Weighted;
     const canManageExistingKeys = typeof channelId === 'number';
     const activeCheckModel = checkModelOptions.includes(checkModel) ? checkModel : (checkModelOptions[0] ?? '');
+    const isImageCheckModel = isImageChannelType(formData.type) || isImageGenerationModel(activeCheckModel);
 
     const effectiveKey =
         formData.keys.find((k) => k.enabled && k.channel_key.trim())?.channel_key.trim() || '';
@@ -372,7 +389,7 @@ export function ChannelForm({
         setCheckResults((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => !idSet.has(Number(id)))));
     };
 
-    const handleCheckKeys = (keyIds?: number[]) => {
+    const handleCheckKeys = (keyIds?: number[], mode?: 'real_image_generation') => {
         if (!canManageExistingKeys) return;
         const ids = keyIds?.length ? keyIds.filter((id) => checkableExistingKeyIds.includes(id)) : checkableExistingKeyIds;
         if (ids.length === 0) {
@@ -383,8 +400,11 @@ export function ChannelForm({
             toast.warning(keyT('modelRequired'));
             return;
         }
+        if (mode === 'real_image_generation' && !window.confirm('真实生图检测会调用上游图片生成接口，成功生成可能产生费用。确认继续吗？')) {
+            return;
+        }
         checkChannelKeys.mutate(
-            { id: channelId, model: activeCheckModel, key_ids: ids },
+            { id: channelId, model: activeCheckModel, key_ids: ids, mode },
             {
                 onSuccess: (results) => {
                     const resultByID = new Map(results.map((result) => [result.id, result]));
@@ -527,6 +547,9 @@ export function ChannelForm({
                             <SelectItem className='rounded-xl' value={String(ChannelType.Gemini)}>{t('typeGemini')}</SelectItem>
                             <SelectItem className='rounded-xl' value={String(ChannelType.Volcengine)}>{t('typeVolcengine')}</SelectItem>
                             <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIEmbedding)}>{t('typeOpenAIEmbedding')}</SelectItem>
+                            <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIImageGeneration)}>{t('typeOpenAIImageGeneration')}</SelectItem>
+                            <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIImageEdit)}>{t('typeOpenAIImageEdit')}</SelectItem>
+                            <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIImageVariation)}>{t('typeOpenAIImageVariation')}</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
@@ -732,6 +755,23 @@ export function ChannelForm({
                                 >
                                     {keyT('selected')}
                                 </Button>
+                                {isImageCheckModel && (
+                                    <>
+                                        <span className="max-w-52 text-[10px] leading-4 text-muted-foreground">
+                                            图片模型默认仅鉴权检测
+                                        </span>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={checkChannelKeys.isPending || selectedCheckableKeyIds.length === 0}
+                                            onClick={() => handleCheckKeys(selectedCheckableKeyIds, 'real_image_generation')}
+                                            className="h-7 rounded-lg px-2 text-xs text-orange-600"
+                                        >
+                                            真实生图检测
+                                        </Button>
+                                    </>
+                                )}
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -914,7 +954,7 @@ export function ChannelForm({
                                     <CheckResultDetail
                                         ok={checkResults[k.id].ok}
                                         label={checkResults[k.id].ok ? keyT('ok') : keyT('bad')}
-                                        detail={checkResults[k.id].error}
+                                        detail={[checkResults[k.id].note, checkResults[k.id].strategy ? `检测方式: ${checkResults[k.id].strategy}` : '', checkResults[k.id].error].filter(Boolean).join('\n')}
                                     />
                                 )}
                                 {typeof k.total_cost === 'number' && (

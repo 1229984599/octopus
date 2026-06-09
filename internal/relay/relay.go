@@ -57,6 +57,13 @@ func newRelayRun(c *gin.Context, inboundType llm.APIFormat, inAdapter transforme
 		resp.Error(c, http.StatusNotFound, "model not found")
 		return nil, err
 	}
+	requestCapability := dbmodel.RequestCapability(internalRequest.RequestType, inboundType)
+	groupCapability := dbmodel.NormalizeGroupCapability(group.Capability)
+	if !dbmodel.GroupCapabilityCompatible(groupCapability, requestCapability) {
+		err := fmt.Errorf("model group %s capability %s is not compatible with %s request", group.Name, groupCapability, requestCapability)
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return nil, err
+	}
 
 	apiKeyID := c.GetInt("api_key_id")
 	iter := balancer.NewIterator(group, apiKeyID, internalRequest.Model)

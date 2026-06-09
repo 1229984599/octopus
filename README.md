@@ -258,6 +258,7 @@ The program automatically appends API paths based on channel type. You only need
 - Check results are written back to the channel key status. If any key checks successfully, the channel is enabled automatically.
 - `401` / `403` keys can be removed directly. Temporary upstream failures can disable the channel until a later successful check re-enables it.
 - Channel-level `RPM` limits relay requests and key checks together. `0` means unlimited.
+- Image-generation models use a low-cost auth/model-list style check by default instead of generating an image. A real image-generation check is a separate explicit action and warns that upstream cost may be incurred.
 
 ---
 
@@ -284,6 +285,7 @@ Groups aggregate multiple channels into a unified external model name.
 - Group editing supports checking whether a selected channel can serve the group model.
 - Each group channel can configure a retry count used when the selected channel fails.
 - Failed group-channel checks expose detailed error information, while successful key checks can re-enable the underlying channel.
+- Groups can declare a capability (`auto`, chat/text, Responses/Codex, embedding, image). This lets image groups work through `/v1/images/*` routes while incompatible request types return a clear error.
 
 > 💡 **Example**: Create a group named `gpt-4o`, add multiple providers' GPT-4o channels to it, then access all channels via a unified `model: gpt-4o`.
 
@@ -329,6 +331,7 @@ Since the program handles numerous statistics, writing to the database on every 
 - Checks run in the background and show live progress plus detailed runtime logs.
 - The scheduled task checks channels and channel keys only, avoiding repeated checks through groups.
 - `401` / `403` keys are deleted automatically. Temporary server-side failures can disable a channel.
+- Scheduled checks do not perform real image generation by default, so image model checks remain low-cost unless a user explicitly runs a real image check.
 - DingTalk robot notifications support webhook and signed secret configuration, including a test button in settings.
 
 ---

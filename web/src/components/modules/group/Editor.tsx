@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Accordion, AccordionContent, AccordionItem } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
 import { getModelIcon } from '@/lib/model-icons';
-import { useCheckGroupItem, type GroupMode } from '@/api/endpoints/group';
+import { GroupCapability, useCheckGroupItem, type GroupMode } from '@/api/endpoints/group';
 import type { MemberCheckState, SelectedMember } from './ItemList';
 import { MemberList } from './ItemList';
 import { matchesGroupName, memberKey, normalizeKey, MODE_LABELS } from './utils';
@@ -26,6 +26,7 @@ export type GroupEditorValues = {
     name: string;
     match_regex: string;
     mode: GroupMode;
+    capability: GroupCapability;
     first_token_time_out: number;
     session_keep_time: number;
     auto_check: boolean;
@@ -317,6 +318,7 @@ export function GroupEditor({
     const [groupName, setGroupName] = useState(initial?.name ?? '');
     const [matchRegex, setMatchRegex] = useState(initial?.match_regex ?? '');
     const [mode, setMode] = useState<GroupMode>((initial?.mode ?? 1) as GroupMode);
+    const [capability, setCapability] = useState<GroupCapability>(initial?.capability ?? GroupCapability.Auto);
     const [firstTokenTimeOut, setFirstTokenTimeOut] = useState<number>(initial?.first_token_time_out ?? 0);
     const [sessionKeepTime, setSessionKeepTime] = useState<number>(initial?.session_keep_time ?? 0);
     const [autoCheck, setAutoCheck] = useState<boolean>(initial?.auto_check ?? true);
@@ -414,6 +416,7 @@ export function GroupEditor({
             group_id: groupId,
             item_id: member.item_id,
             model: member.name,
+            capability,
         });
         const okCount = results.filter((result) => result.ok).length;
         const detail = results.length > 0
@@ -428,7 +431,7 @@ export function GroupEditor({
             message: `${okCount}/${results.length}`,
             detail,
         };
-    }, [checkGroupItem, groupId, t]);
+    }, [capability, checkGroupItem, groupId, t]);
 
     const handleCheckMember = useCallback(async (member: SelectedMember) => {
         setCheckingMemberId(member.id);
@@ -496,6 +499,7 @@ export function GroupEditor({
             name: groupName,
             match_regex: regexKey,
             mode,
+            capability,
             first_token_time_out: firstTokenTimeOut,
             session_keep_time: sessionKeepTime,
             auto_check: autoCheck,
@@ -602,6 +606,28 @@ export function GroupEditor({
                             />
                         </Field>
 
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border/50 bg-muted/30 p-1">
+                        {[
+                            [GroupCapability.Auto, '自动'],
+                            [GroupCapability.Chat, '文本'],
+                            [GroupCapability.ResponsesCodex, 'Responses/Codex'],
+                            [GroupCapability.Embedding, 'Embedding'],
+                            [GroupCapability.Image, '图片'],
+                        ].map(([value, label]) => (
+                            <button
+                                key={value}
+                                type="button"
+                                onClick={() => setCapability(value as GroupCapability)}
+                                className={cn(
+                                    'h-7 rounded-lg px-2 text-xs transition-colors',
+                                    capability === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                )}
+                            >
+                                {label}
+                            </button>
+                        ))}
                     </div>
 
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

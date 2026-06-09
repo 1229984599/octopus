@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -85,7 +86,7 @@ func (c *Channel) UnmarshalJSON(data []byte) error {
 func decodeChannelAPIFormat(data []byte) (llm.APIFormat, error) {
 	var format string
 	if err := json.Unmarshal(data, &format); err == nil {
-		return llm.APIFormat(format), nil
+		return NormalizeChannelAPIFormat(llm.APIFormat(format)), nil
 	}
 
 	var legacyType int
@@ -97,6 +98,15 @@ func decodeChannelAPIFormat(data []byte) (llm.APIFormat, error) {
 	}
 
 	return "", fmt.Errorf("unsupported channel type %s", string(data))
+}
+
+func NormalizeChannelAPIFormat(format llm.APIFormat) llm.APIFormat {
+	if legacyType, err := strconv.Atoi(format.String()); err == nil {
+		if normalized, ok := legacyChannelTypeToAPIFormat(legacyType); ok {
+			return normalized
+		}
+	}
+	return format
 }
 
 func legacyChannelTypeToAPIFormat(legacyType int) (llm.APIFormat, bool) {

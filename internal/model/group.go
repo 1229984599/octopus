@@ -3,6 +3,7 @@ package model
 import "encoding/json"
 
 type GroupMode int
+type GroupCapability string
 
 const (
 	GroupModeRoundRobin GroupMode = 1 // 轮询：依次循环选择渠道
@@ -11,15 +12,27 @@ const (
 	GroupModeWeighted   GroupMode = 4 // 加权分配：按优权重分配流量
 )
 
+const (
+	GroupCapabilityAuto            GroupCapability = "auto"
+	GroupCapabilityChat            GroupCapability = "chat"
+	GroupCapabilityResponsesCodex  GroupCapability = "responses_codex"
+	GroupCapabilityEmbedding       GroupCapability = "embedding"
+	GroupCapabilityImage           GroupCapability = "image"
+	GroupCapabilityImageGeneration GroupCapability = "image_generation" // legacy alias, normalized to image
+	GroupCapabilityImageEdit       GroupCapability = "image_edit"       // legacy alias, normalized to image
+	GroupCapabilityImageVariation  GroupCapability = "image_variation"  // legacy alias, normalized to image
+)
+
 type Group struct {
-	ID                int         `json:"id" gorm:"primaryKey"`
-	Name              string      `json:"name" gorm:"unique;not null"`
-	Mode              GroupMode   `json:"mode" gorm:"not null"`
-	MatchRegex        string      `json:"match_regex"`
-	FirstTokenTimeOut int         `json:"first_token_time_out"` // 单个渠道首个Token响应超时时间(秒)
-	SessionKeepTime   int         `json:"session_keep_time"`    // 会话保持时间(秒) 0 为禁用
-	AutoCheck         bool        `json:"auto_check" gorm:"default:true"`
-	Items             []GroupItem `json:"items,omitempty" gorm:"foreignKey:GroupID"`
+	ID                int             `json:"id" gorm:"primaryKey"`
+	Name              string          `json:"name" gorm:"unique;not null"`
+	Mode              GroupMode       `json:"mode" gorm:"not null"`
+	Capability        GroupCapability `json:"capability" gorm:"default:auto"`
+	MatchRegex        string          `json:"match_regex"`
+	FirstTokenTimeOut int             `json:"first_token_time_out"` // 单个渠道首个Token响应超时时间(秒)
+	SessionKeepTime   int             `json:"session_keep_time"`    // 会话保持时间(秒) 0 为禁用
+	AutoCheck         bool            `json:"auto_check" gorm:"default:true"`
+	Items             []GroupItem     `json:"items,omitempty" gorm:"foreignKey:GroupID"`
 }
 
 func (g *Group) UnmarshalJSON(data []byte) error {
@@ -36,6 +49,9 @@ func (g *Group) UnmarshalJSON(data []byte) error {
 		g.AutoCheck = *payload.AutoCheck
 	} else {
 		g.AutoCheck = true
+	}
+	if g.Capability == "" {
+		g.Capability = GroupCapabilityAuto
 	}
 	return nil
 }
@@ -55,6 +71,7 @@ type GroupUpdateRequest struct {
 	ID                int                      `json:"id" binding:"required"`
 	Name              *string                  `json:"name,omitempty"`                 // 仅在名称变更时发送
 	Mode              *GroupMode               `json:"mode,omitempty"`                 // 仅在模式变更时发送
+	Capability        *GroupCapability         `json:"capability,omitempty"`           // 请求/模型能力类型
 	MatchRegex        *string                  `json:"match_regex,omitempty"`          // 仅在匹配正则变更时发送
 	FirstTokenTimeOut *int                     `json:"first_token_time_out,omitempty"` // 仅在超时变更时发送(秒)
 	SessionKeepTime   *int                     `json:"session_keep_time,omitempty"`    // 仅在会话保持时间变更时发送(秒)

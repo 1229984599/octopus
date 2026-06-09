@@ -25,6 +25,14 @@ export enum GroupMode {
     Weighted = 4,
 }
 
+export enum GroupCapability {
+    Auto = 'auto',
+    Chat = 'chat',
+    ResponsesCodex = 'responses_codex',
+    Embedding = 'embedding',
+    Image = 'image',
+}
+
 /**
  * 分组信息
  */
@@ -32,6 +40,7 @@ export interface Group {
     id?: number;
     name: string;
     mode: GroupMode;
+    capability: GroupCapability;
     match_regex: string;
     first_token_time_out?: number;
     session_keep_time?: number;
@@ -67,6 +76,7 @@ export interface GroupUpdateRequest {
     id: number;
     name?: string;                        // 仅在名称变更时发送
     mode?: GroupMode;                     // 仅在模式变更时发送
+    capability?: GroupCapability;          // 请求/模型能力类型
     match_regex?: string;                 // 仅在匹配正则变更时发送
     first_token_time_out?: number;        // 仅在超时变更时发送
     session_keep_time?: number;           // 仅在会话保持时间变更时发送
@@ -164,13 +174,15 @@ export type GroupItemCheckResult = {
     status_code: number;
     ok: boolean;
     error?: string;
+    strategy?: string;
+    note?: string;
 };
 
 export function useCheckGroupItem() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: async (data: { group_id: number; item_id: number; model?: string }) => {
+        mutationFn: async (data: { group_id: number; item_id: number; model?: string; mode?: string; capability?: GroupCapability }) => {
             return apiClient.post<GroupItemCheckResult[]>('/api/v1/group/check-item', data);
         },
         onSuccess: () => {

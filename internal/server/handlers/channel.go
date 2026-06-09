@@ -416,6 +416,7 @@ func checkChannelKeys(c *gin.Context) {
 		ID     int    `json:"id" binding:"required"`
 		Model  string `json:"model" binding:"required"`
 		KeyIDs []int  `json:"key_ids,omitempty"`
+		Mode   string `json:"mode,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
@@ -427,7 +428,7 @@ func checkChannelKeys(c *gin.Context) {
 		resp.Error(c, http.StatusNotFound, err.Error())
 		return
 	}
-	results := helper.CheckChannelKeys(ctx, *channel, request.Model, request.KeyIDs)
+	results := helper.CheckChannelKeysWithMode(ctx, *channel, request.Model, request.KeyIDs, helper.CheckMode(request.Mode))
 	if err := op.ChannelKeySaveDBByIDs(ctx, channelKeyCheckResultIDs(results)); err != nil {
 		resp.Error(c, http.StatusInternalServerError, err.Error())
 		return
