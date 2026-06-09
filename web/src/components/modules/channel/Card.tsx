@@ -3,6 +3,7 @@ import {
     MorphingDialogTrigger,
     MorphingDialogContainer,
     MorphingDialogContent,
+    useMorphingDialog,
 } from '@/components/ui/morphing-dialog';
 import { AlertTriangle, Check, CheckCircle2, Clock, DollarSign, Key, Layers, MessageSquare, ShieldAlert, XCircle } from 'lucide-react';
 import { type StatsMetricsFormatted } from '@/api/endpoints/stats';
@@ -14,6 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/common/Toast';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 export function Card({
     channel,
@@ -22,6 +24,8 @@ export function Card({
     selectionMode = false,
     selected = false,
     onToggleSelect,
+    autoOpenEdit = false,
+    onAutoOpenEdit,
 }: {
     channel: Channel;
     stats: StatsMetricsFormatted;
@@ -29,6 +33,8 @@ export function Card({
     selectionMode?: boolean;
     selected?: boolean;
     onToggleSelect?: (id: number) => void;
+    autoOpenEdit?: boolean;
+    onAutoOpenEdit?: (id: number) => void;
 }) {
     const t = useTranslations('channel.card');
     const tForm = useTranslations('channel.form');
@@ -202,16 +208,63 @@ export function Card({
 
     return (
         <MorphingDialog>
+            <CardDialog
+                cardBody={cardBody}
+                channel={channel}
+                stats={stats}
+                autoOpenEdit={autoOpenEdit}
+                onAutoOpenEdit={onAutoOpenEdit}
+            />
+        </MorphingDialog>
+    );
+}
+
+function CardDialog({
+    cardBody,
+    channel,
+    stats,
+    autoOpenEdit,
+    onAutoOpenEdit,
+}: {
+    cardBody: ReactNode;
+    channel: Channel;
+    stats: StatsMetricsFormatted;
+    autoOpenEdit: boolean;
+    onAutoOpenEdit?: (id: number) => void;
+}) {
+    const { isOpen, setIsOpen } = useMorphingDialog();
+    const [openInEditMode, setOpenInEditMode] = useState(false);
+    const openedRef = useRef(false);
+
+    useEffect(() => {
+        if (!autoOpenEdit) {
+            openedRef.current = false;
+            return;
+        }
+        if (openedRef.current) return;
+        openedRef.current = true;
+        setOpenInEditMode(true);
+        setIsOpen(true);
+        onAutoOpenEdit?.(channel.id);
+    }, [autoOpenEdit, channel.id, onAutoOpenEdit, setIsOpen]);
+
+    useEffect(() => {
+        if (isOpen) return;
+        setOpenInEditMode(false);
+    }, [isOpen]);
+
+    return (
+        <>
             <MorphingDialogTrigger className="w-full">
                 {cardBody}
             </MorphingDialogTrigger>
 
             <MorphingDialogContainer>
                 <MorphingDialogContent className="w-[calc(100vw-1rem)] sm:w-[calc(100vw-2rem)] md:max-w-4xl xl:max-w-5xl bg-card text-card-foreground px-3 py-2 sm:px-5 rounded-3xl max-h-[92vh] overflow-y-auto">
-                    <CardContent channel={channel} stats={stats} />
+                    <CardContent channel={channel} stats={stats} initialEditing={openInEditMode} />
                 </MorphingDialogContent>
             </MorphingDialogContainer>
-        </MorphingDialog>
+        </>
     );
 }
 

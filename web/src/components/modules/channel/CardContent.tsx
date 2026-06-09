@@ -62,11 +62,11 @@ function buildChannelFormData(channel: Channel): ChannelFormData {
     };
 }
 
-export function CardContent({ channel, stats }: { channel: Channel; stats: StatsMetricsFormatted }) {
+export function CardContent({ channel, stats, initialEditing = false }: { channel: Channel; stats: StatsMetricsFormatted; initialEditing?: boolean }) {
     const { setIsOpen } = useMorphingDialog();
     const updateChannel = useUpdateChannel();
     const deleteChannel = useDeleteChannel();
-    const [isEditing, setIsEditing] = useState(false);
+    const [isEditing, setIsEditing] = useState(initialEditing);
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const [formData, setFormData] = useState<ChannelFormData>(() => buildChannelFormData(channel));
     const t = useTranslations('channel.detail');

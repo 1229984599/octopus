@@ -19,6 +19,7 @@ import { matchesGroupName, memberKey, normalizeKey, MODE_LABELS } from './utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/animate-ui/components/animate/tooltip';
 import { HelpCircle } from 'lucide-react';
 import { toast } from '@/components/common/Toast';
+import { openChannelEditor } from '@/components/modules/channel/navigation-store';
 
 
 
@@ -32,6 +33,8 @@ export type GroupEditorValues = {
     auto_check: boolean;
     members: SelectedMember[];
 };
+
+const GROUP_CHECK_CONCURRENCY = 6;
 
 function ModelPickerSection({
     modelChannels,
@@ -185,6 +188,8 @@ function SortSection({
     onCheck,
     onCheckAll,
     onDeleteFailed,
+    onDeleteDisabled,
+    onOpenChannel,
     checkingMemberId,
     checkingAll,
     checkResults,
@@ -200,6 +205,8 @@ function SortSection({
     onCheck?: (member: SelectedMember) => void;
     onCheckAll?: () => void;
     onDeleteFailed?: () => void;
+    onDeleteDisabled?: () => void;
+    onOpenChannel?: (member: SelectedMember) => void;
     checkingMemberId?: string | null;
     checkingAll?: boolean;
     checkResults?: Record<string, MemberCheckState>;
@@ -209,6 +216,7 @@ function SortSection({
 }) {
     const t = useTranslations('group');
     const failedCount = Object.values(checkResults ?? {}).filter((result) => !result.ok).length;
+    const disabledCount = members.filter((member) => member.enabled === false).length;
     const checkableCount = members.filter((member) => member.item_id).length;
 
     return (
@@ -257,6 +265,23 @@ function SortSection({
                             <span>{t('form.deleteFailed')}</span>
                         </button>
                     )}
+                    {onDeleteDisabled && (
+                        <button
+                            type="button"
+                            onClick={onDeleteDisabled}
+                            disabled={disabledCount === 0}
+                            className={cn(
+                                'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors',
+                                disabledCount === 0
+                                    ? 'text-muted-foreground/50 cursor-not-allowed'
+                                    : 'hover:bg-destructive/10 text-destructive'
+                            )}
+                            title={t('form.deleteDisabled')}
+                        >
+                            <Trash2 className="size-3.5" />
+                            <span>{t('form.deleteDisabled')}</span>
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={onClear}
@@ -283,6 +308,7 @@ function SortSection({
                     onWeightChange={onWeightChange}
                     onRetryCountChange={onRetryCountChange}
                     onCheck={onCheck}
+                    onOpenChannel={onOpenChannel}
                     checkingMemberId={checkingMemberId}
                     checkResults={checkResults}
                     removingIds={removingIds}
@@ -302,6 +328,7 @@ export function GroupEditor({
     isSubmitting,
     onSubmit,
     onCancel,
+    onOpenMemberChannel,
 }: {
     groupId?: number;
     initial?: Partial<GroupEditorValues>;
@@ -310,6 +337,7 @@ export function GroupEditor({
     isSubmitting: boolean;
     onSubmit: (values: GroupEditorValues) => void;
     onCancel?: () => void;
+    onOpenMemberChannel?: (member: SelectedMember) => void;
 }) {
     const t = useTranslations('group');
     const { data: modelChannels = [] } = useModelChannelList();
@@ -388,6 +416,14 @@ export function GroupEditor({
         setSelectedMembers((prev) => prev.map((m) => m.id === id ? { ...m, retry_count: retryCount } : m));
     }, []);
 
+    const handleOpenMemberChannel = useCallback((member: SelectedMember) => {
+        if (onOpenMemberChannel) {
+            onOpenMemberChannel(member);
+            return;
+        }
+        openChannelEditor(member.channel_id);
+    }, [onOpenMemberChannel]);
+
     const handleRemoveMember = useCallback((id: string) => {
         setRemovingIds((prev) => new Set(prev).add(id));
         setCheckResults((prev) => {
@@ -454,18 +490,27 @@ export function GroupEditor({
         setCheckingAll(true);
         const nextResults: Record<string, MemberCheckState> = {};
         try {
-            for (const member of checkableMembers) {
-                setCheckingMemberId(member.id);
-                try {
-                    nextResults[member.id] = await runMemberCheck(member);
-                } catch (error) {
-                    nextResults[member.id] = {
-                        ok: false,
-                        message: error instanceof Error ? error.message : String(error),
-                        detail: error instanceof Error ? error.message : String(error),
-                    };
+            let cursor = 0;
+            const workerCount = Math.min(GROUP_CHECK_CONCURRENCY, checkableMembers.length);
+            await Promise.all(Array.from({ length: workerCount }, async () => {
+                while (cursor < checkableMembers.length) {
+                    const member = checkableMembers[cursor++];
+                    if (!member) continue;
+                    try {
+                        const result = await runMemberCheck(member);
+                        nextResults[member.id] = result;
+                        setCheckResults((prev) => ({ ...prev, [member.id]: result }));
+                    } catch (error) {
+                        const result = {
+                            ok: false,
+                            message: error instanceof Error ? error.message : String(error),
+                            detail: error instanceof Error ? error.message : String(error),
+                        };
+                        nextResults[member.id] = result;
+                        setCheckResults((prev) => ({ ...prev, [member.id]: result }));
+                    }
                 }
-            }
+            }));
             setCheckResults((prev) => ({ ...prev, ...nextResults }));
             const okCount = Object.values(nextResults).filter((result) => result.ok).length;
             toast.success(t('toast.checkDone'), { description: `${okCount}/${checkableMembers.length}` });
@@ -489,6 +534,26 @@ export function GroupEditor({
             return next;
         });
     }, [checkResults]);
+
+    const handleDeleteDisabledMembers = useCallback(() => {
+        const disabledIds = new Set(
+            selectedMembers
+                .filter((member) => member.enabled === false)
+                .map((member) => member.id)
+        );
+        if (disabledIds.size === 0) return;
+        setSelectedMembers((prev) => prev.filter((member) => !disabledIds.has(member.id)));
+        setCheckResults((prev) => {
+            const next = { ...prev };
+            disabledIds.forEach((id) => delete next[id]);
+            return next;
+        });
+        setRemovingIds((prev) => {
+            const next = new Set(prev);
+            disabledIds.forEach((id) => next.delete(id));
+            return next;
+        });
+    }, [selectedMembers]);
 
     const isValid = groupKey.length > 0 && selectedMembers.length > 0 && !regexError;
 
@@ -679,6 +744,8 @@ export function GroupEditor({
                                 onCheck={groupId ? handleCheckMember : undefined}
                                 onCheckAll={groupId ? handleCheckAllMembers : undefined}
                                 onDeleteFailed={groupId ? handleDeleteFailedMembers : undefined}
+                                onDeleteDisabled={handleDeleteDisabledMembers}
+                                onOpenChannel={handleOpenMemberChannel}
                                 checkingMemberId={checkingMemberId}
                                 checkingAll={checkingAll}
                                 checkResults={checkResults}

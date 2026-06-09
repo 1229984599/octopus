@@ -11,6 +11,7 @@ import { useCreateGroup } from '@/api/endpoints/group';
 import { useTranslations } from 'next-intl';
 import { GroupEditor } from './Editor';
 import { toast } from '@/components/common/Toast';
+import { openChannelEditor } from '@/components/modules/channel/navigation-store';
 
 export function CreateDialogContent() {
     const { setIsOpen } = useMorphingDialog();
@@ -39,6 +40,10 @@ export function CreateDialogContent() {
                     submitText={t('create.submit')}
                     submittingText={t('create.submitting')}
                     isSubmitting={createGroup.isPending}
+                    onOpenMemberChannel={(member) => {
+                        setIsOpen(false);
+                        openChannelEditor(member.channel_id);
+                    }}
                     onSubmit={({ name, match_regex, mode, capability, first_token_time_out, session_keep_time, auto_check, members }) => {
                         const items: GroupItem[] = members.map((member, index) => ({
                             channel_id: member.channel_id,

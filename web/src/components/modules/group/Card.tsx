@@ -5,6 +5,7 @@ import { Trash2, X, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { type Group, useDeleteGroup, useUpdateGroup } from '@/api/endpoints/group';
 import { useModelChannelList } from '@/api/endpoints/model';
+import { useChannelList } from '@/api/endpoints/channel';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/common/Toast';
@@ -15,6 +16,7 @@ import { MemberList } from './ItemList';
 import { GroupEditor, type GroupEditorValues } from './Editor';
 import { buildChannelNameByModelKey, modelChannelKey, MODE_LABELS } from './utils';
 import { GroupCapability, GroupMode, type GroupUpdateRequest } from '@/api/endpoints/group';
+import { openChannelEditor } from '@/components/modules/channel/navigation-store';
 import {
     MorphingDialog,
     MorphingDialogClose,
@@ -31,9 +33,10 @@ interface EditDialogContentProps {
     displayMembers: SelectedMember[];
     isSubmitting: boolean;
     onSubmit: (values: GroupEditorValues, onDone?: () => void) => void;
+    onOpenMemberChannel: (member: SelectedMember) => void;
 }
 
-function EditDialogContent({ group, displayMembers, isSubmitting, onSubmit }: EditDialogContentProps) {
+function EditDialogContent({ group, displayMembers, isSubmitting, onSubmit, onOpenMemberChannel }: EditDialogContentProps) {
     const { setIsOpen } = useMorphingDialog();
     const t = useTranslations('group');
     return (
@@ -65,6 +68,10 @@ function EditDialogContent({ group, displayMembers, isSubmitting, onSubmit }: Ed
                     isSubmitting={isSubmitting}
                     onCancel={() => setIsOpen(false)}
                     onSubmit={(v) => onSubmit(v, () => setIsOpen(false))}
+                    onOpenMemberChannel={(member) => {
+                        setIsOpen(false);
+                        onOpenMemberChannel(member);
+                    }}
                 />
             </MorphingDialogDescription>
         </>
@@ -76,6 +83,7 @@ export function GroupCard({ group }: { group: Group }) {
     const updateGroup = useUpdateGroup();
     const deleteGroup = useDeleteGroup();
     const { data: modelChannels = [] } = useModelChannelList();
+    const { data: channelsData = [] } = useChannelList();
 
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [members, setMembers] = useState<SelectedMember[]>([]);
@@ -84,6 +92,11 @@ export function GroupCard({ group }: { group: Group }) {
     const membersRef = useRef<SelectedMember[]>([]);
 
     const channelNameByKey = useMemo(() => buildChannelNameByModelKey(modelChannels), [modelChannels]);
+    const channelNameById = useMemo(() => {
+        const map = new Map<number, string>();
+        channelsData.forEach((item) => map.set(item.raw.id, item.raw.name));
+        return map;
+    }, [channelsData]);
     const enabledByKey = useMemo(() => {
         const map = new Map<string, boolean>();
         modelChannels.forEach((mc) => {
@@ -100,12 +113,14 @@ export function GroupCard({ group }: { group: Group }) {
                 name: item.model_name,
                 enabled: enabledByKey.get(modelChannelKey(item.channel_id, item.model_name)) ?? true,
                 channel_id: item.channel_id,
-                channel_name: channelNameByKey.get(modelChannelKey(item.channel_id, item.model_name)) ?? `Channel ${item.channel_id}`,
+                channel_name: channelNameByKey.get(modelChannelKey(item.channel_id, item.model_name))
+                    ?? channelNameById.get(item.channel_id)
+                    ?? `Channel ${item.channel_id}`,
                 item_id: item.id,
                 weight: item.weight,
                 retry_count: item.retry_count ?? 0,
             })),
-        [group.items, channelNameByKey, enabledByKey]
+        [group.items, channelNameById, channelNameByKey, enabledByKey]
     );
 
     useEffect(() => {
@@ -205,6 +220,10 @@ export function GroupCard({ group }: { group: Group }) {
         setMembers((prev) => prev.map((m) => m.id === id ? { ...m, retry_count: retryCount } : m));
         queueMemberUpdate(id);
     }, [queueMemberUpdate]);
+
+    const handleOpenMemberChannel = useCallback((member: SelectedMember) => {
+        openChannelEditor(member.channel_id);
+    }, []);
 
     const handleSubmitEdit = useCallback((values: GroupEditorValues, onDone?: () => void) => {
         if (!group.id) return;
@@ -321,6 +340,7 @@ export function GroupCard({ group }: { group: Group }) {
                                     displayMembers={displayMembers}
                                     isSubmitting={updateGroup.isPending}
                                     onSubmit={handleSubmitEdit}
+                                    onOpenMemberChannel={handleOpenMemberChannel}
                                 />
                             </MorphingDialogContent>
                         </MorphingDialogContainer>
@@ -395,6 +415,7 @@ export function GroupCard({ group }: { group: Group }) {
                     onRemove={handleRemoveMember}
                     onWeightChange={handleWeightChange}
                     onRetryCountChange={handleRetryCountChange}
+                    onOpenChannel={handleOpenMemberChannel}
                     onDragStart={handleDragStart}
                     onDrop={handleDropReorder}
                     onDragFinish={handleDragFinish}

@@ -22,6 +22,13 @@ export enum ChannelType {
     OpenAIImageVariation = 'openai/image_variation',
 }
 
+function normalizeChannelType(type: ChannelType): ChannelType {
+    if (type === ChannelType.OpenAIImageEdit || type === ChannelType.OpenAIImageVariation) {
+        return ChannelType.OpenAIImageGeneration;
+    }
+    return type;
+}
+
 /**
  * 自动分组类型枚举
  */
@@ -211,6 +218,7 @@ export function useChannelList() {
         select: (data) => data.map((item) => ({
             raw: ({
                 ...item,
+                type: normalizeChannelType(item.type),
                 base_urls: item.base_urls ?? [],
                 custom_header: item.custom_header ?? [],
                 keys: sortChannelKeys(item.keys),

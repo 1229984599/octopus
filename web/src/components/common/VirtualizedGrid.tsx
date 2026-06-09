@@ -34,6 +34,7 @@ interface VirtualizedGridProps<T> {
     onReachEnd?: () => void;
     reachEndEnabled?: boolean;
     reachEndOffset?: number;
+    scrollToIndex?: number | null;
 }
 
 function getColumnsForWidth(
@@ -61,6 +62,7 @@ export function VirtualizedGrid<T>({
     onReachEnd,
     reachEndEnabled = false,
     reachEndOffset = 1,
+    scrollToIndex = null,
 }: VirtualizedGridProps<T>) {
     'use no memo';
 
@@ -131,6 +133,13 @@ export function VirtualizedGrid<T>({
     });
 
     const virtualRows = rowVirtualizer.getVirtualItems();
+
+    useEffect(() => {
+        if (scrollToIndex === null || scrollToIndex === undefined || scrollToIndex < 0) return;
+        if (items.length === 0) return;
+        const rowIndex = Math.floor(scrollToIndex / columnCount);
+        rowVirtualizer.scrollToIndex(rowIndex, { align: 'center' });
+    }, [columnCount, items.length, rowVirtualizer, scrollToIndex]);
 
     useEffect(() => {
         if (!onReachEnd || !reachEndEnabled || itemRowCount === 0) return;

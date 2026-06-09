@@ -547,9 +547,7 @@ export function ChannelForm({
                             <SelectItem className='rounded-xl' value={String(ChannelType.Gemini)}>{t('typeGemini')}</SelectItem>
                             <SelectItem className='rounded-xl' value={String(ChannelType.Volcengine)}>{t('typeVolcengine')}</SelectItem>
                             <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIEmbedding)}>{t('typeOpenAIEmbedding')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIImageGeneration)}>{t('typeOpenAIImageGeneration')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIImageEdit)}>{t('typeOpenAIImageEdit')}</SelectItem>
-                            <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIImageVariation)}>{t('typeOpenAIImageVariation')}</SelectItem>
+                            <SelectItem className='rounded-xl' value={String(ChannelType.OpenAIImageGeneration)}>{t('typeOpenAIImage')}</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>

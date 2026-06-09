@@ -44,6 +44,7 @@ import { toast } from '@/components/common/Toast';
 import { cn } from '@/lib/utils';
 import { AlertTriangle, Check, CheckSquare, Edit3, Plus, Search, Tags, Trash2, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useChannelNavigationStore } from './navigation-store';
 
 type ChannelListItem = {
     raw: ChannelType;
@@ -81,6 +82,8 @@ export function Channel() {
     const sortField = useToolbarViewOptionsStore((s) => s.getSortField(pageKey));
     const sortOrder = useToolbarViewOptionsStore((s) => s.getSortOrder(pageKey));
     const filter = useToolbarViewOptionsStore((s) => s.channelFilter);
+    const pendingEditChannelId = useChannelNavigationStore((s) => s.editChannelId);
+    const clearPendingEditChannel = useChannelNavigationStore((s) => s.clearEditChannel);
     const t = useTranslations('channel.batch');
 
     const [selectionMode, setSelectionMode] = useState(false);
@@ -141,6 +144,10 @@ export function Channel() {
         [selectedIds, sortedChannels]
     );
     const hasActiveFilters = Boolean(searchTerm.trim()) || filter !== 'all' || selectedTag !== 'all';
+    const pendingEditIndex = useMemo(
+        () => pendingEditChannelId ? visibleChannels.findIndex((item) => item.raw.id === pendingEditChannelId) : -1,
+        [pendingEditChannelId, visibleChannels]
+    );
 
     useEffect(() => {
         if (!channelsData) return;
@@ -155,6 +162,21 @@ export function Channel() {
         if (selectedTag === 'all') return;
         if (!availableTags.includes(selectedTag)) setSelectedTag('all');
     }, [availableTags, selectedTag]);
+
+    useEffect(() => {
+        if (!pendingEditChannelId || !channelsData) return;
+        const exists = channelsData.some((item) => item.raw.id === pendingEditChannelId);
+        if (!exists) {
+            clearPendingEditChannel(pendingEditChannelId);
+            return;
+        }
+
+        setSelectionMode(false);
+        setSelectedIds(new Set());
+        setSelectedTag('all');
+        useSearchStore.getState().setSearchTerm(pageKey, '');
+        useToolbarViewOptionsStore.getState().setChannelFilter('all');
+    }, [channelsData, clearPendingEditChannel, pendingEditChannelId]);
 
     const toggleSelectionMode = () => {
         setSelectionMode((prev) => {
@@ -336,6 +358,7 @@ export function Channel() {
                         layout={layout}
                         columns={{ default: 1, md: 2, lg: 3 }}
                         estimateItemHeight={216}
+                        scrollToIndex={pendingEditIndex >= 0 ? pendingEditIndex : null}
                         getItemKey={(item: ChannelListItem) => `channel-${item.raw.id}`}
                         renderItem={(item: ChannelListItem) => (
                             <Card
@@ -345,6 +368,8 @@ export function Channel() {
                                 selectionMode={selectionMode}
                                 selected={selectedIds.has(item.raw.id)}
                                 onToggleSelect={toggleSelect}
+                                autoOpenEdit={pendingEditChannelId === item.raw.id}
+                                onAutoOpenEdit={clearPendingEditChannel}
                             />
                         )}
                     />

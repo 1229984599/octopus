@@ -50,6 +50,7 @@ function MemberItem({
     onWeightChange,
     onRetryCountChange,
     onCheck,
+    onOpenChannel,
     checking,
     checkState,
     isRemoving,
@@ -64,6 +65,7 @@ function MemberItem({
     onWeightChange?: (id: string, weight: number) => void;
     onRetryCountChange?: (id: string, retryCount: number) => void;
     onCheck?: (member: SelectedMember) => void;
+    onOpenChannel?: (member: SelectedMember) => void;
     checking?: boolean;
     checkState?: MemberCheckState;
     isRemoving?: boolean;
@@ -134,7 +136,23 @@ function MemberItem({
                         </TooltipTrigger>
                         <TooltipContent key={member.name}>{member.name}</TooltipContent>
                     </Tooltip>
-                    <span className="text-[10px] text-muted-foreground truncate leading-tight">{member.channel_name}</span>
+                    {onOpenChannel ? (
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onOpenChannel(member);
+                            }}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            className="max-w-full truncate text-left text-[10px] leading-tight text-muted-foreground transition-colors hover:text-primary"
+                            title={t('form.openChannel')}
+                        >
+                            {member.channel_name}
+                        </button>
+                    ) : (
+                        <span className="text-[10px] text-muted-foreground truncate leading-tight">{member.channel_name}</span>
+                    )}
                 </div>
 
                 {showWeight && (
@@ -237,6 +255,7 @@ export interface MemberListProps {
     onWeightChange?: (id: string, weight: number) => void;
     onRetryCountChange?: (id: string, retryCount: number) => void;
     onCheck?: (member: SelectedMember) => void;
+    onOpenChannel?: (member: SelectedMember) => void;
     checkingMemberId?: string | null;
     checkResults?: Record<string, MemberCheckState>;
     /**
@@ -273,6 +292,7 @@ export function MemberList({
     onWeightChange,
     onRetryCountChange,
     onCheck,
+    onOpenChannel,
     checkingMemberId,
     checkResults,
     autoScrollOnAdd = true,
@@ -383,6 +403,7 @@ export function MemberList({
                                                 onWeightChange={onWeightChange}
                                                 onRetryCountChange={onRetryCountChange}
                                                 onCheck={onCheck}
+                                                onOpenChannel={onOpenChannel}
                                                 checking={checkingMemberId === member.id}
                                                 checkState={checkResults?.[member.id]}
                                                 isRemoving={removingIds.has(member.id)}
