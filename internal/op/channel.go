@@ -215,6 +215,10 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 		selectFields = append(selectFields, "custom_model")
 		updates.CustomModel = *req.CustomModel
 	}
+	if req.CheckModel != nil {
+		selectFields = append(selectFields, "check_model")
+		updates.CheckModel = strings.TrimSpace(*req.CheckModel)
+	}
 	if req.Proxy != nil {
 		selectFields = append(selectFields, "proxy")
 		updates.Proxy = *req.Proxy

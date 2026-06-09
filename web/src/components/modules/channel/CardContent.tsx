@@ -54,6 +54,7 @@ function buildChannelFormData(channel: Channel): ChannelFormData {
         rpm: channel.rpm ?? 0,
         model: channel.model,
         custom_model: channel.custom_model,
+        check_model: channel.check_model ?? '',
         proxy: channel.proxy,
         auto_sync: channel.auto_sync,
         auto_check: channel.auto_check ?? true,
@@ -101,6 +102,7 @@ export function CardContent({ channel, stats, initialEditing = false }: { channe
         if (formData.rpm !== (channel.rpm ?? 0)) req.rpm = formData.rpm;
         if (formData.model !== channel.model) req.model = formData.model;
         if (formData.custom_model !== channel.custom_model) req.custom_model = formData.custom_model;
+        if (formData.check_model !== (channel.check_model ?? '')) req.check_model = formData.check_model;
         if (formData.proxy !== channel.proxy) req.proxy = formData.proxy;
         if (formData.auto_sync !== channel.auto_sync) req.auto_sync = formData.auto_sync;
         if (formData.auto_check !== (channel.auto_check ?? true)) req.auto_check = formData.auto_check;

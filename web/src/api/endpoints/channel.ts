@@ -77,6 +77,7 @@ export type Channel = {
     rpm: number;
     model: string;
     custom_model: string;
+    check_model: string;
     proxy: boolean;
     auto_sync: boolean;
     auto_check: boolean;
@@ -119,6 +120,7 @@ export type CreateChannelRequest = {
     rpm?: number;
     model: string;
     custom_model?: string;
+    check_model?: string;
     proxy?: boolean;
     auto_sync?: boolean;
     auto_check?: boolean;
@@ -143,6 +145,7 @@ export type UpdateChannelRequest = {
     rpm?: number;
     model?: string;
     custom_model?: string;
+    check_model?: string;
     proxy?: boolean;
     auto_sync?: boolean;
     auto_check?: boolean;
@@ -223,6 +226,7 @@ export function useChannelList() {
                 custom_header: item.custom_header ?? [],
                 keys: sortChannelKeys(item.keys),
                 tags: item.tags ?? [],
+                check_model: item.check_model ?? '',
             }) satisfies Channel,
             formatted: {
                 input_token: formatCount(item.stats.input_token),

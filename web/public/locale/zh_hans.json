@@ -624,6 +624,8 @@
                 "deleteInvalid": "删除 401/403",
                 "keyRequired": "没有可检测的密钥",
                 "modelRequired": "请选择检测模型",
+                "modelSaved": "检测模型已保存",
+                "modelSaveFailed": "检测模型保存失败",
                 "done": "检测完成",
                 "failed": "检测失败",
                 "deleted": "密钥已删除",

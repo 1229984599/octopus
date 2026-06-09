@@ -42,6 +42,7 @@ type Channel struct {
 	RPM           int            `json:"rpm" gorm:"default:0"`
 	Model         string         `json:"model"`
 	CustomModel   string         `json:"custom_model"`
+	CheckModel    string         `json:"check_model"`
 	Proxy         bool           `json:"proxy" gorm:"default:false"`
 	AutoSync      bool           `json:"auto_sync" gorm:"default:false"`
 	AutoCheck     bool           `json:"auto_check" gorm:"default:true"`
@@ -196,6 +197,7 @@ type ChannelUpdateRequest struct {
 	RPM           *int            `json:"rpm,omitempty"`
 	Model         *string         `json:"model,omitempty"`
 	CustomModel   *string         `json:"custom_model,omitempty"`
+	CheckModel    *string         `json:"check_model,omitempty"`
 	Proxy         *bool           `json:"proxy,omitempty"`
 	AutoSync      *bool           `json:"auto_sync,omitempty"`
 	AutoCheck     *bool           `json:"auto_check,omitempty"`

@@ -752,6 +752,9 @@ func activeKeyChannel(channel model.Channel) model.Channel {
 }
 
 func defaultCheckModel(channel model.Channel) string {
+	if checkModel := strings.TrimSpace(channel.CheckModel); checkModel != "" {
+		return checkModel
+	}
 	models := xstrings.SplitTrimCompact(",", channel.Model, channel.CustomModel)
 	if len(models) == 0 {
 		return ""

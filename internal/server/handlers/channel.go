@@ -428,7 +428,19 @@ func checkChannelKeys(c *gin.Context) {
 		resp.Error(c, http.StatusNotFound, err.Error())
 		return
 	}
-	results := helper.CheckChannelKeysWithMode(ctx, *channel, request.Model, request.KeyIDs, helper.CheckMode(request.Mode))
+	checkModel := strings.TrimSpace(request.Model)
+	if checkModel == "" {
+		resp.Error(c, http.StatusBadRequest, "model required")
+		return
+	}
+	if strings.TrimSpace(channel.CheckModel) != checkModel {
+		if _, err := op.ChannelUpdate(&model.ChannelUpdateRequest{ID: channel.ID, CheckModel: &checkModel}, ctx); err != nil {
+			resp.Error(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+		channel.CheckModel = checkModel
+	}
+	results := helper.CheckChannelKeysWithMode(ctx, *channel, checkModel, request.KeyIDs, helper.CheckMode(request.Mode))
 	if err := op.ChannelKeySaveDBByIDs(ctx, channelKeyCheckResultIDs(results)); err != nil {
 		resp.Error(c, http.StatusInternalServerError, err.Error())
 		return

@@ -58,6 +58,7 @@ export interface ChannelFormData {
     rpm: number;
     model: string;
     custom_model: string;
+    check_model: string;
     enabled: boolean;
     tags: string[];
     proxy: boolean;
@@ -132,15 +133,15 @@ export function ChannelForm({
         [formData.custom_model]
     );
     const checkModelOptions = useMemo(
-        () => Array.from(new Set([...autoModels, ...customModels])),
-        [autoModels, customModels]
+        () => Array.from(new Set([formData.check_model?.trim(), ...autoModels, ...customModels].filter(Boolean))),
+        [autoModels, customModels, formData.check_model]
     );
     const [inputValue, setInputValue] = useState('');
     const [tagInputValue, setTagInputValue] = useState('');
     const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
     const [draggedKeyIndex, setDraggedKeyIndex] = useState<number | null>(null);
     const [selectedKeyIds, setSelectedKeyIds] = useState<Set<number>>(new Set());
-    const [checkModel, setCheckModel] = useState('');
+    const [checkModel, setCheckModel] = useState(formData.check_model ?? '');
     const [modelSearch, setModelSearch] = useState('');
     const [modelPopoverOpen, setModelPopoverOpen] = useState(false);
     const [checkResults, setCheckResults] = useState<Record<number, ChannelKeyCheckResult>>({});
@@ -151,8 +152,17 @@ export function ChannelForm({
     const updateChannel = useUpdateChannel();
     const showKeyWeight = formData.key_mode === GroupMode.Weighted;
     const canManageExistingKeys = typeof channelId === 'number';
-    const activeCheckModel = checkModelOptions.includes(checkModel) ? checkModel : (checkModelOptions[0] ?? '');
+    const activeCheckModel = checkModel.trim() || (checkModelOptions[0] ?? '');
     const isImageCheckModel = isImageChannelType(formData.type) || isImageGenerationModel(activeCheckModel);
+
+    useEffect(() => {
+        const savedModel = formData.check_model?.trim() ?? '';
+        setCheckModel((current) => {
+            if (savedModel) return savedModel;
+            if (current && checkModelOptions.includes(current)) return current;
+            return checkModelOptions[0] ?? '';
+        });
+    }, [checkModelOptions, formData.check_model]);
 
     const effectiveKey =
         formData.keys.find((k) => k.enabled && k.channel_key.trim())?.channel_key.trim() || '';
@@ -425,6 +435,22 @@ export function ChannelForm({
                     toast.success(keyT('done'), { description: `${okCount}/${results.length}` });
                 },
                 onError: (error) => toast.error(keyT('failed'), { description: error.message }),
+            }
+        );
+    };
+
+    const handleSelectCheckModel = (model: string) => {
+        const nextModel = model.trim();
+        setCheckModel(nextModel);
+        setModelPopoverOpen(false);
+        onFormDataChange({ ...formData, check_model: nextModel });
+
+        if (!canManageExistingKeys) return;
+        updateChannel.mutate(
+            { id: channelId, check_model: nextModel },
+            {
+                onSuccess: () => toast.success(keyT('modelSaved')),
+                onError: (error) => toast.error(keyT('modelSaveFailed'), { description: error.message }),
             }
         );
     };
@@ -716,10 +742,7 @@ export function ChannelForm({
                                                 <button
                                                     key={model}
                                                     type="button"
-                                                    onClick={() => {
-                                                        setCheckModel(model);
-                                                        setModelPopoverOpen(false);
-                                                    }}
+                                                    onClick={() => handleSelectCheckModel(model)}
                                                     className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-muted"
                                                 >
                                                     <span className="truncate">{model}</span>
