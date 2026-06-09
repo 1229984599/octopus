@@ -2,7 +2,7 @@
 
 import { Check, Loader, Trash2, X } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 import { Input } from '@/components/ui/input';
 
 type EditValues = {

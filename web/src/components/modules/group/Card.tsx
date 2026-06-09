@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { type Group, useDeleteGroup, useUpdateGroup } from '@/api/endpoints/group';
 import { useModelChannelList } from '@/api/endpoints/model';
 import { useChannelList } from '@/api/endpoints/channel';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/common/Toast';
 import { CopyIconButton } from '@/components/common/CopyButton';

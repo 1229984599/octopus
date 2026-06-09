@@ -15,7 +15,7 @@ import { getModelIcon } from '@/lib/model-icons';
 import type { LLMChannel } from '@/api/endpoints/model';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/animate-ui/components/animate/tooltip';
 import { CheckResultDetail } from '@/components/common/CheckResultDetail';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 
 export interface SelectedMember extends LLMChannel {
     id: string;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 import { ScrollText, Calendar, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';

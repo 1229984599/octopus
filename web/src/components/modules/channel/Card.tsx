@@ -9,7 +9,7 @@ import { AlertTriangle, Check, CheckCircle2, Clock, DollarSign, Key, Layers, Mes
 import { type StatsMetricsFormatted } from '@/api/endpoints/stats';
 import { type Channel, useEnableChannel } from '@/api/endpoints/channel';
 import { CardContent } from './CardContent';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/animate-ui/components/animate/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/common/Toast';

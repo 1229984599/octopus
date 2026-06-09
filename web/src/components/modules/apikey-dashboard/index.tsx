@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 import { useTheme } from 'next-themes';
 import { toast } from '@/components/common/Toast';
 import { useAPIKeyDashboardStats } from '@/api/endpoints/apikey';

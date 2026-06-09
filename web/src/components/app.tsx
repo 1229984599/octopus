@@ -7,7 +7,7 @@ import { LoginForm } from '@/components/modules/login';
 import { APIKeyDashboard } from '@/components/modules/apikey-dashboard';
 import { ContentLoader } from '@/route/content-loader';
 import { NavBar, useNavStore } from '@/components/modules/navbar';
-import { useTranslations } from 'next-intl'
+import { useTranslations } from '@/lib/translations'
 import Logo, { LOGO_DRAW_END_MS } from '@/components/modules/logo';
 import { Toolbar } from '@/components/modules/toolbar';
 import { useQueryClient } from '@tanstack/react-query';

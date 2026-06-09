@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 import { AlertTriangle, Database, Download, Eye, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

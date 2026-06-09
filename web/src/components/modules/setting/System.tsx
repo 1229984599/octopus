@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
-import { Monitor, Globe, Clock, Shield, HelpCircle, X } from 'lucide-react';
+import { useTranslations } from '@/lib/translations';
+import { Loader2, Monitor, Globe, Clock, Shield, HelpCircle, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useSettingList, useSetSetting, SettingKey } from '@/api/endpoints/setting';
+import { useSettingList, useSetSetting, SettingKey, useTestProxy } from '@/api/endpoints/setting';
 import { toast } from '@/components/common/Toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/animate-ui/components/animate/tooltip';
 
@@ -13,6 +14,7 @@ export function SettingSystem() {
     const t = useTranslations('setting');
     const { data: settings } = useSettingList();
     const setSetting = useSetSetting();
+    const testProxy = useTestProxy();
 
     const [proxyUrl, setProxyUrl] = useState('');
     const [statsSaveInterval, setStatsSaveInterval] = useState('');
@@ -58,6 +60,33 @@ export function SettingSystem() {
                 }
             }
         });
+    };
+
+    const saveProxyIfChanged = async () => {
+        const value = proxyUrl.trim();
+        if (value === initialProxyUrl.current) return;
+        await setSetting.mutateAsync({ key: SettingKey.ProxyURL, value });
+        initialProxyUrl.current = value;
+        toast.success(t('saved'));
+    };
+
+    const handleTestProxy = async () => {
+        const value = proxyUrl.trim();
+        if (!value) {
+            toast.warning(t('proxyUrl.required'));
+            return;
+        }
+        try {
+            await saveProxyIfChanged();
+            const result = await testProxy.mutateAsync({ proxy_url: value });
+            toast.success(t('proxyUrl.testSuccess'), {
+                description: t('proxyUrl.testSuccessDescription', { elapsed: result.elapsed_ms }),
+            });
+        } catch (error) {
+            toast.error(t('proxyUrl.testFailed'), {
+                description: error instanceof Error ? error.message : String(error),
+            });
+        }
     };
 
     const corsAllowOriginsList = useMemo(() => {
@@ -122,18 +151,43 @@ export function SettingSystem() {
             </h2>
 
             {/* 代理地址 */}
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                     <Globe className="h-5 w-5 text-muted-foreground" />
                     <span className="text-sm font-medium">{t('proxyUrl.label')}</span>
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <HelpCircle className="size-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                {t('proxyUrl.hint')}
+                                <br />
+                                {t('proxyUrl.dockerExample')}
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
                 </div>
-                <Input
-                    value={proxyUrl}
-                    onChange={(e) => setProxyUrl(e.target.value)}
-                    onBlur={() => handleSave('proxy_url', proxyUrl, initialProxyUrl.current)}
-                    placeholder={t('proxyUrl.placeholder')}
-                    className="w-48 rounded-xl"
-                />
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                    <Input
+                        value={proxyUrl}
+                        onChange={(e) => setProxyUrl(e.target.value)}
+                        onBlur={() => handleSave(SettingKey.ProxyURL, proxyUrl.trim(), initialProxyUrl.current)}
+                        placeholder={t('proxyUrl.placeholder')}
+                        className="w-full rounded-xl sm:w-64"
+                    />
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleTestProxy}
+                        disabled={testProxy.isPending || setSetting.isPending}
+                        className="h-9 rounded-xl"
+                    >
+                        {testProxy.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
+                        {testProxy.isPending ? t('proxyUrl.testing') : t('proxyUrl.test')}
+                    </Button>
+                </div>
             </div>
 
             {/* 统计保存周期 */}

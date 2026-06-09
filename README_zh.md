@@ -44,6 +44,27 @@ wget https://raw.githubusercontent.com/1229984599/octopus/refs/heads/dev/docker-
 docker compose up -d
 ```
 
+**Docker 容器使用宿主机代理：**
+
+如果宿主机安装了 mihomo 等代理软件，并对外监听 `7892` 端口，容器内不能使用 `127.0.0.1:7892` 访问它，因为容器里的 `127.0.0.1` 指向容器自身。
+
+- 当前 `docker-compose.yml` 已内置 `host.docker.internal` 到宿主机网关的映射。
+- 如果使用 `docker run`，需要增加 `--add-host=host.docker.internal:host-gateway`。
+- 在 Octopus 后台进入“设置 -> 系统 -> 代理地址”，填写 `http://host.docker.internal:7892` 或 `socks5://host.docker.internal:7892`。
+- 点击设置页的代理测试按钮，如果提示测试成功，说明容器已经能通过该代理访问外网。
+- 渠道请求要走全局代理时，需要在渠道里开启“使用代理”，并且不要单独填写渠道代理地址。
+- mihomo 需要允许 Docker 容器访问该端口，通常需要监听 `0.0.0.0:7892` 或开启 LAN 访问；如果只监听 `127.0.0.1:7892`，容器一般无法连上。
+
+示例：
+
+```bash
+docker run -d --name octopus \
+  --add-host=host.docker.internal:host-gateway \
+  -v /path/to/data:/app/data \
+  -p 8080:8080 \
+  ghcr.io/1229984599/octopus
+```
+
 
 ### 📦 从 Release 下载
 

@@ -11,7 +11,7 @@ import {
     MorphingDialogDescription,
     useMorphingDialog,
 } from '@/components/ui/morphing-dialog';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 
 export function CreateDialogContent() {
     const { setIsOpen } = useMorphingDialog();

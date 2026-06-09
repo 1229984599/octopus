@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/1229984599/octopus/internal/client"
 	"github.com/1229984599/octopus/internal/model"
 	"github.com/1229984599/octopus/internal/op"
 	"github.com/1229984599/octopus/internal/server/middleware"
@@ -50,6 +52,11 @@ func init() {
 			router.NewRoute("/auto-check/test-dingtalk", http.MethodPost).
 				Use(middleware.RequireJSON()).
 				Handle(testAutoCheckDingTalk),
+		).
+		AddRoute(
+			router.NewRoute("/test-proxy", http.MethodPost).
+				Use(middleware.RequireJSON()).
+				Handle(testProxy),
 		).
 		AddRoute(
 			router.NewRoute("/export", http.MethodGet).
@@ -167,6 +174,61 @@ func testAutoCheckDingTalk(c *gin.Context) {
 		return
 	}
 	resp.Success(c, nil)
+}
+
+func testProxy(c *gin.Context) {
+	var request struct {
+		ProxyURL string `json:"proxy_url"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	proxyURL := strings.TrimSpace(request.ProxyURL)
+	if proxyURL == "" {
+		resp.Error(c, http.StatusBadRequest, "代理地址不能为空")
+		return
+	}
+	setting := model.Setting{Key: model.SettingKeyProxyURL, Value: proxyURL}
+	if err := setting.Validate(); err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	startedAt := time.Now()
+	testCtx, cancel := context.WithTimeout(c.Request.Context(), 12*time.Second)
+	defer cancel()
+
+	httpClient, err := client.GetHTTPClientCustomProxy(proxyURL)
+	if err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpClient.Timeout = 12 * time.Second
+	req, err := http.NewRequestWithContext(testCtx, http.MethodGet, "https://www.gstatic.com/generate_204", nil)
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	res, err := httpClient.Do(req)
+	if err != nil {
+		resp.Error(c, http.StatusBadRequest, "代理测试失败: "+err.Error())
+		return
+	}
+	defer res.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1024))
+
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusBadRequest {
+		resp.Error(c, http.StatusBadRequest, "代理测试失败: HTTP "+strconv.Itoa(res.StatusCode))
+		return
+	}
+
+	resp.Success(c, gin.H{
+		"status_code":  res.StatusCode,
+		"elapsed_ms":   time.Since(startedAt).Milliseconds(),
+		"test_url":     "https://www.gstatic.com/generate_204",
+		"proxy_scheme": strings.SplitN(proxyURL, ":", 2)[0],
+	})
 }
 
 func exportDB(c *gin.Context) {

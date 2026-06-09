@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Pencil, Trash2, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 import { useUpdateModel, useDeleteModel, type LLMInfo } from '@/api/endpoints/model';
 import { getModelIcon } from '@/lib/model-icons';
 import { toast } from '@/components/common/Toast';

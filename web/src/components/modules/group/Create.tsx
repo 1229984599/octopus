@@ -8,7 +8,7 @@ import {
     useMorphingDialog,
 } from '@/components/ui/morphing-dialog';
 import { useCreateGroup } from '@/api/endpoints/group';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 import { GroupEditor } from './Editor';
 import { toast } from '@/components/common/Toast';
 import { openChannelEditor } from '@/components/modules/channel/navigation-store';

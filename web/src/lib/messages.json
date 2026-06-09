@@ -151,7 +151,15 @@
         },
         "proxyUrl": {
             "label": "代理地址",
-            "placeholder": "请输入代理地址"
+            "placeholder": "请输入代理地址",
+            "required": "请先填写代理地址",
+            "hint": "Docker 容器内访问宿主机代理时，请使用 host.docker.internal，不要使用 127.0.0.1。",
+            "dockerExample": "mihomo 示例：http://host.docker.internal:7892 或 socks5://host.docker.internal:7892。渠道开启使用代理且未单独填写渠道代理时，会使用这里的全局代理。",
+            "test": "测试",
+            "testing": "测试中",
+            "testSuccess": "代理测试成功",
+            "testSuccessDescription": "耗时 {elapsed} ms",
+            "testFailed": "代理测试失败"
         },
         "statsSaveInterval": {
             "label": "统计保存周期（分钟）",

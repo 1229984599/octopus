@@ -43,7 +43,7 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { toast } from '@/components/common/Toast';
 import { cn } from '@/lib/utils';
 import { AlertTriangle, Check, CheckSquare, Edit3, Plus, Search, Tags, Trash2, X } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 import { useChannelNavigationStore } from './navigation-store';
 
 type ChannelListItem = {

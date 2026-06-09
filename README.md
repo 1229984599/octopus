@@ -44,6 +44,26 @@ wget https://raw.githubusercontent.com/1229984599/octopus/refs/heads/dev/docker-
 docker compose up -d
 ```
 
+**Using a host machine proxy from Docker:**
+
+If a proxy such as mihomo is installed on the host machine and listens on port `7892`, the container must access it through the host gateway instead of `127.0.0.1`.
+
+- With the provided `docker-compose.yml`, `host.docker.internal` is already mapped to the host gateway.
+- If you use `docker run`, add `--add-host=host.docker.internal:host-gateway`.
+- In Octopus, go to Settings -> System -> Proxy URL and set `http://host.docker.internal:7892` or `socks5://host.docker.internal:7892`.
+- Click the proxy test button in Settings to verify connectivity.
+- For channel requests to use the global proxy, enable proxy usage on that channel and leave the channel-specific proxy field empty.
+
+Example:
+
+```bash
+docker run -d --name octopus \
+  --add-host=host.docker.internal:host-gateway \
+  -v /path/to/data:/app/data \
+  -p 8080:8080 \
+  ghcr.io/1229984599/octopus
+```
+
 
 ### 📦 Download from Release
 

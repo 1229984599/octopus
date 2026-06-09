@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/lib/translations';
 import { Activity, Bell, CalendarClock, HelpCircle, Play, Send, ShieldCheck, Square } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';

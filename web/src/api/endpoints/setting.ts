@@ -197,6 +197,24 @@ export function useTestAutoCheckDingTalk() {
     });
 }
 
+export interface ProxyTestResult {
+    status_code: number;
+    elapsed_ms: number;
+    test_url: string;
+    proxy_scheme: string;
+}
+
+export function useTestProxy() {
+    return useMutation({
+        mutationFn: async (data: { proxy_url: string }) => {
+            return apiClient.post<ProxyTestResult>('/api/v1/setting/test-proxy', data);
+        },
+        onError: (error) => {
+            logger.error('测试代理失败:', error);
+        },
+    });
+}
+
 /**
  * 数据库导入/导出
  */
