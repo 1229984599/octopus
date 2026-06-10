@@ -8,7 +8,7 @@ import JsonView from '@uiw/react-json-view';
 import { githubDarkTheme } from '@uiw/react-json-view/githubDark';
 import { githubLightTheme } from '@uiw/react-json-view/githubLight';
 import { useTheme } from 'next-themes';
-import { type RelayLog, type ChannelAttempt } from '@/api/endpoints/log';
+import { type RelayLog, type ChannelAttempt, useLogDetail } from '@/api/endpoints/log';
 import { getModelIcon } from '@/lib/model-icons';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -184,21 +184,23 @@ function DeferredJsonContent({ content, fallbackText }: { content: string | unde
     );
 }
 
-export function LogCard({ log }: { log: RelayLog }) {
+function LogCardContent({ log }: { log: RelayLog }) {
     const t = useTranslations('log.card');
+    const { isOpen } = useMorphingDialog();
+    const detailQuery = useLogDetail(log.id, isOpen);
+    const detailLog = detailQuery.data ?? log;
     const { Avatar: ModelAvatar, color: brandColor } = useMemo(
-        () => getModelIcon(log.actual_model_name),
-        [log.actual_model_name]
+        () => getModelIcon(detailLog.actual_model_name),
+        [detailLog.actual_model_name]
     );
-    const requestAPIKeyName = useMemo(() => log.request_api_key_name?.trim() ?? '', [log.request_api_key_name]);
+    const requestAPIKeyName = useMemo(() => detailLog.request_api_key_name?.trim() ?? '', [detailLog.request_api_key_name]);
 
-    const hasError = !!log.error;
-    const hasMultipleAttempts = log.attempts && log.attempts.length > 1;
+    const hasError = !!detailLog.error;
+    const hasMultipleAttempts = detailLog.attempts && detailLog.attempts.length > 1;
     const [isDiagnosticExpanded, setIsDiagnosticExpanded] = useState(false);
 
     return (
         <TooltipProvider>
-            <MorphingDialog>
                 <MorphingDialogTrigger
                     className={cn(
                         "rounded-3xl border bg-card w-full text-left",
@@ -209,15 +211,15 @@ export function LogCard({ log }: { log: RelayLog }) {
                         <ModelAvatar size={40} />
                         <div className="min-w-0 flex flex-col gap-3">
                             <div className="flex items-center gap-2 min-w-0 text-sm">
-                                <span className="font-semibold text-card-foreground truncate" title={log.request_model_name}>
-                                    {log.request_model_name}
+                                <span className="font-semibold text-card-foreground truncate" title={detailLog.request_model_name}>
+                                    {detailLog.request_model_name}
                                 </span>
                                 <ArrowRight className="size-3.5 shrink-0 text-muted-foreground/50" />
                                 {hasMultipleAttempts ? (
                                     <RetryBadgeWithTooltip
-                                        channelName={log.channel_name}
+                                        channelName={detailLog.channel_name}
                                         brandColor={brandColor}
-                                        attempts={log.attempts!}
+                                        attempts={detailLog.attempts!}
                                     />
                                 ) : (
                                     <Badge
@@ -225,20 +227,20 @@ export function LogCard({ log }: { log: RelayLog }) {
                                         className="shrink-0 text-xs px-1.5 py-0"
                                         style={{ backgroundColor: `${brandColor}15`, color: brandColor }}
                                     >
-                                        {log.channel_name}
+                                        {detailLog.channel_name}
                                     </Badge>
                                 )}
-                                <span className="text-muted-foreground truncate" title={log.actual_model_name}>
-                                    {log.actual_model_name}
+                                <span className="text-muted-foreground truncate" title={detailLog.actual_model_name}>
+                                    {detailLog.actual_model_name}
                                 </span>
-                                {log.attempts?.some(a => a.sticky) && (
+                                {detailLog.attempts?.some(a => a.sticky) && (
                                     <Pin className="size-3.5 shrink-0 text-amber-500" />
                                 )}
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-7 gap-x-4 gap-y-2 text-xs tabular-nums text-muted-foreground">
                                 <div className="flex items-center gap-1.5">
                                     <Clock className="size-3.5 shrink-0" style={{ color: brandColor }} />
-                                    <span>{formatTime(log.time)}</span>
+                                    <span>{formatTime(detailLog.time)}</span>
                                 </div>
                                 {requestAPIKeyName && (
                                     <div className="flex items-center gap-1.5">
@@ -250,30 +252,30 @@ export function LogCard({ log }: { log: RelayLog }) {
                                 )}
                                 <div className="flex items-center gap-1.5">
                                     <Zap className="size-3.5 shrink-0 text-amber-500" />
-                                    <span>{t('firstToken')} {formatDuration(log.ftut)}</span>
+                                    <span>{t('firstToken')} {formatDuration(detailLog.ftut)}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <Cpu className="size-3.5 shrink-0 text-blue-500" />
-                                    <span>{t('totalTime')} {formatDuration(log.use_time)}</span>
+                                    <span>{t('totalTime')} {formatDuration(detailLog.use_time)}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <ArrowDownToLine className="size-3.5 shrink-0 text-green-500" />
-                                    <span>{t('input')} {log.input_tokens.toLocaleString()}</span>
+                                    <span>{t('input')} {detailLog.input_tokens.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <ArrowUpFromLine className="size-3.5 shrink-0 text-purple-500" />
-                                    <span>{t('output')} {log.output_tokens.toLocaleString()}</span>
+                                    <span>{t('output')} {detailLog.output_tokens.toLocaleString()}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <DollarSign className="size-3.5 shrink-0 text-emerald-500" />
                                     <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                                        {t('cost')} {Number(log.cost).toFixed(6)}
+                                        {t('cost')} {Number(detailLog.cost).toFixed(6)}
                                     </span>
                                 </div>
                             </div>
                             {hasError && (
                                 <div className="p-2.5 rounded-xl bg-destructive/10 border border-destructive/20 overflow-hidden">
-                                    <p className="text-xs text-destructive line-clamp-2">{log.error}</p>
+                                    <p className="text-xs text-destructive line-clamp-2">{detailLog.error}</p>
                                 </div>
                             )}
                         </div>
@@ -285,13 +287,13 @@ export function LogCard({ log }: { log: RelayLog }) {
                         <MorphingDialogClose className="top-4 right-5 text-muted-foreground hover:text-foreground transition-colors" />
                         <MorphingDialogTitle className="flex items-center gap-2 mb-3 text-sm">
                             <ModelAvatar size={28} />
-                            <span className="font-semibold text-card-foreground">{log.request_model_name}</span>
+                            <span className="font-semibold text-card-foreground">{detailLog.request_model_name}</span>
                             <ArrowRight className="size-3.5 text-muted-foreground/50" />
                             {hasMultipleAttempts ? (
                                 <RetryBadgeWithTooltip
-                                    channelName={log.channel_name}
+                                    channelName={detailLog.channel_name}
                                     brandColor={brandColor}
-                                    attempts={log.attempts!}
+                                    attempts={detailLog.attempts!}
                                 />
                             ) : (
                                 <Badge
@@ -299,11 +301,11 @@ export function LogCard({ log }: { log: RelayLog }) {
                                     className="text-xs px-1.5 py-0"
                                     style={{ backgroundColor: `${brandColor}15`, color: brandColor }}
                                 >
-                                    {log.channel_name}
+                                    {detailLog.channel_name}
                                 </Badge>
                             )}
-                            <span className="text-muted-foreground">{log.actual_model_name}</span>
-                            {log.attempts?.some(a => a.sticky) && (
+                            <span className="text-muted-foreground">{detailLog.actual_model_name}</span>
+                            {detailLog.attempts?.some(a => a.sticky) && (
                                 <Pin className="size-3.5 shrink-0 text-amber-500" />
                             )}
                         </MorphingDialogTitle>
@@ -346,7 +348,7 @@ export function LogCard({ log }: { log: RelayLog }) {
                                                                 : "bg-secondary text-secondary-foreground"
                                                         )}
                                                     >
-                                                        {log.total_attempts || log.attempts!.length} {t('attempts')}
+                                                        {detailLog.total_attempts || detailLog.attempts!.length} {t('attempts')}
                                                     </Badge>
                                                 )}
                                                 {isDiagnosticExpanded ? (
@@ -371,21 +373,21 @@ export function LogCard({ log }: { log: RelayLog }) {
                                                             <div className="relative pl-1">
                                                                 <div className="absolute right-0 top-0">
                                                                     <CopyIconButton
-                                                                        text={log.error ?? ''}
+                                                                        text={detailLog.error ?? ''}
                                                                         className="p-1 rounded-md text-destructive/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
                                                                         copyIconClassName="size-4"
                                                                         checkIconClassName="size-4"
                                                                     />
                                                                 </div>
                                                                 <p className="text-sm text-destructive whitespace-pre-wrap wrap-break-word pr-8 leading-relaxed">
-                                                                    {log.error}
+                                                                    {detailLog.error}
                                                                 </p>
                                                             </div>
                                                         )}
 
                                                         {hasMultipleAttempts && (
                                                             <div className="flex flex-col gap-2">
-                                                                {log.attempts!.map((attempt, idx) => (
+                                                                {detailLog.attempts!.map((attempt, idx) => (
                                                                     <div
                                                                         key={idx}
                                                                         className={cn(
@@ -428,11 +430,11 @@ export function LogCard({ log }: { log: RelayLog }) {
                                                 <Send className="size-4 text-green-500" />
                                                 <span className="text-sm font-medium text-card-foreground">{t('requestContent')}</span>
                                                 <Badge variant="secondary" className="ml-auto text-xs">
-                                                    {log.input_tokens.toLocaleString()} {t('tokens')}
-                                                </Badge>
-                                            </div>
-                                            <div className="flex-1 overflow-auto min-h-0">
-                                                <DeferredJsonContent content={log.request_content} fallbackText={t('noRequestContent')} />
+                                                        {detailLog.input_tokens.toLocaleString()} {t('tokens')}
+                                                    </Badge>
+                                                </div>
+                                                <div className="flex-1 overflow-auto min-h-0">
+                                                <DeferredJsonContent content={detailQuery.isFetching ? undefined : detailLog.request_content} fallbackText={detailQuery.isFetching ? 'Loading...' : t('noRequestContent')} />
                                             </div>
                                         </div>
                                         <div className="flex flex-col rounded-2xl border border-border bg-muted/30 overflow-hidden min-h-0">
@@ -440,11 +442,11 @@ export function LogCard({ log }: { log: RelayLog }) {
                                                 <MessageSquare className="size-4 text-purple-500" />
                                                 <span className="text-sm font-medium text-card-foreground">{t('responseContent')}</span>
                                                 <Badge variant="secondary" className="ml-auto text-xs">
-                                                    {log.output_tokens.toLocaleString()} {t('tokens')}
-                                                </Badge>
-                                            </div>
-                                            <div className="flex-1 overflow-auto min-h-0">
-                                                <DeferredJsonContent content={log.response_content} fallbackText={t('noResponseContent')} />
+                                                        {detailLog.output_tokens.toLocaleString()} {t('tokens')}
+                                                    </Badge>
+                                                </div>
+                                                <div className="flex-1 overflow-auto min-h-0">
+                                                <DeferredJsonContent content={detailQuery.isFetching ? undefined : detailLog.response_content} fallbackText={detailQuery.isFetching ? 'Loading...' : t('noResponseContent')} />
                                             </div>
                                         </div>
                                     </div>
@@ -455,7 +457,7 @@ export function LogCard({ log }: { log: RelayLog }) {
                         <div className="flex flex-wrap items-center gap-3 md:gap-4 pt-4 mt-auto text-xs text-muted-foreground shrink-0">
                             <div className="flex items-center gap-1.5">
                                 <Clock className="size-3.5" style={{ color: brandColor }} />
-                                <span className="tabular-nums">{formatTime(log.time)}</span>
+                                <span className="tabular-nums">{formatTime(detailLog.time)}</span>
                             </div>
                             {requestAPIKeyName && (
                                 <div className="flex min-w-0 items-center gap-1.5">
@@ -467,22 +469,29 @@ export function LogCard({ log }: { log: RelayLog }) {
                             )}
                             <div className="flex items-center gap-1.5">
                                 <Zap className="size-3.5 text-amber-500" />
-                                <span>{t('firstTokenTime')}: {formatDuration(log.ftut)}</span>
+                                <span>{t('firstTokenTime')}: {formatDuration(detailLog.ftut)}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
                                 <Cpu className="size-3.5 text-blue-500" />
-                                <span>{t('totalTime')}: {formatDuration(log.use_time)}</span>
+                                <span>{t('totalTime')}: {formatDuration(detailLog.use_time)}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
                                 <DollarSign className="size-3.5 text-emerald-500" />
                                 <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                                    {t('cost')}: {Number(log.cost).toFixed(6)}
+                                    {t('cost')}: {Number(detailLog.cost).toFixed(6)}
                                 </span>
                             </div>
                         </div>
                     </MorphingDialogContent>
                 </MorphingDialogContainer>
-            </MorphingDialog>
         </TooltipProvider>
+    );
+}
+
+export function LogCard({ log }: { log: RelayLog }) {
+    return (
+        <MorphingDialog>
+            <LogCardContent log={log} />
+        </MorphingDialog>
     );
 }

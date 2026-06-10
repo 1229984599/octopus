@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 
@@ -16,6 +17,24 @@ import (
 const relayLogMaxSize = 20
 const relayLogMaxSizeNoDB = 100 // 当不保存到数据库时，允许更大的缓存用于实时查询
 
+var relayLogListColumns = []string{
+	"id",
+	"time",
+	"request_model_name",
+	"request_api_key_name",
+	"channel_id",
+	"channel_name",
+	"actual_model_name",
+	"input_tokens",
+	"output_tokens",
+	"ftut",
+	"use_time",
+	"cost",
+	"error",
+	"attempts",
+	"total_attempts",
+}
+
 var relayLogCache = make([]model.RelayLog, 0, relayLogMaxSize)
 var relayLogCacheLock sync.Mutex
 
@@ -26,6 +45,12 @@ var relayLogSubscribersLock sync.RWMutex
 
 var relayLogStreamTokens = make(map[string]struct{})
 var relayLogStreamTokensLock sync.RWMutex
+
+func relayLogSummary(relayLog model.RelayLog) model.RelayLog {
+	relayLog.RequestContent = ""
+	relayLog.ResponseContent = ""
+	return relayLog
+}
 
 func RelayLogStreamTokenCreate() (string, error) {
 	bytes := make([]byte, 32)
@@ -124,7 +149,7 @@ func RelayLogAdd(ctx context.Context, relayLog model.RelayLog) error {
 		maxSize = relayLogMaxSizeNoDB
 	}
 	relayLog.ID = snowflake.GenerateID()
-	go notifySubscribers(relayLog)
+	go notifySubscribers(relayLogSummary(relayLog))
 
 	relayLogCacheLock.Lock()
 	relayLogCache = append(relayLogCache, relayLog)
@@ -206,10 +231,10 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 	for _, log := range relayLogCache {
 		if hasTimeFilter {
 			if log.Time >= int64(*startTime) && log.Time <= int64(*endTime) {
-				cachedLogs = append(cachedLogs, log)
+				cachedLogs = append(cachedLogs, relayLogSummary(log))
 			}
 		} else {
-			cachedLogs = append(cachedLogs, log)
+			cachedLogs = append(cachedLogs, relayLogSummary(log))
 		}
 	}
 	relayLogCacheLock.Unlock()
@@ -248,7 +273,7 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 			}
 
 			var dbLogs []model.RelayLog
-			if err := query.Order("id DESC").Offset(dbOffset).Limit(remaining).Find(&dbLogs).Error; err != nil {
+			if err := query.Select(relayLogListColumns).Order("id DESC").Offset(dbOffset).Limit(remaining).Find(&dbLogs).Error; err != nil {
 				return nil, err
 			}
 			result = append(result, dbLogs...)
@@ -256,6 +281,28 @@ func RelayLogList(ctx context.Context, startTime, endTime *int, page, pageSize i
 	}
 
 	return result, nil
+}
+
+func RelayLogGet(ctx context.Context, id int64) (*model.RelayLog, error) {
+	if id <= 0 {
+		return nil, fmt.Errorf("invalid log id")
+	}
+
+	relayLogCacheLock.Lock()
+	for i := len(relayLogCache) - 1; i >= 0; i-- {
+		if relayLogCache[i].ID == id {
+			log := relayLogCache[i]
+			relayLogCacheLock.Unlock()
+			return &log, nil
+		}
+	}
+	relayLogCacheLock.Unlock()
+
+	var relayLog model.RelayLog
+	if err := db.GetDB().WithContext(ctx).Where("id = ?", id).First(&relayLog).Error; err != nil {
+		return nil, err
+	}
+	return &relayLog, nil
 }
 
 func RelayLogClear(ctx context.Context) error {

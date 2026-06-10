@@ -196,8 +196,14 @@ export function CardContent({ channel, stats, initialEditing = false }: { channe
     };
 
     const enterEditMode = () => {
+        setIsConfirmingDelete(false);
         setFormData(buildChannelFormData(channel));
         setIsEditing(true);
+    };
+
+    const cancelEditMode = () => {
+        setIsConfirmingDelete(false);
+        setIsEditing(false);
     };
 
     return (
@@ -508,8 +514,15 @@ export function CardContent({ channel, stats, initialEditing = false }: { channe
                                 isPending={updateChannel.isPending}
                                 submitText={t('actions.save')}
                                 pendingText={t('actions.saving')}
-                                onCancel={() => setIsEditing(false)}
+                                onCancel={cancelEditMode}
                                 cancelText={t('actions.cancel')}
+                                onDelete={handleDeleteClick}
+                                deleteText={deleteChannel.isPending
+                                    ? t('actions.deleting')
+                                    : isConfirmingDelete
+                                        ? t('actions.confirmDelete')
+                                        : t('actions.delete')}
+                                deleteDisabled={deleteChannel.isPending}
                                 idPrefix="channel"
                                 channelId={channel.id}
                             />

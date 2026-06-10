@@ -73,6 +73,10 @@ const DEFAULT_BATCH_FIELDS: BatchFieldState = {
     auto_group: false,
 };
 
+function deferStateUpdate(update: () => void) {
+    queueMicrotask(update);
+}
+
 export function Channel() {
     const { data: channelsData } = useChannelList();
     const batchDeleteChannels = useBatchDeleteChannels();
@@ -152,15 +156,17 @@ export function Channel() {
     useEffect(() => {
         if (!channelsData) return;
         const existingIds = new Set(channelsData.map((item) => item.raw.id));
-        setSelectedIds((prev) => {
-            const next = new Set(Array.from(prev).filter((id) => existingIds.has(id)));
-            return next.size === prev.size ? prev : next;
+        deferStateUpdate(() => {
+            setSelectedIds((prev) => {
+                const next = new Set(Array.from(prev).filter((id) => existingIds.has(id)));
+                return next.size === prev.size ? prev : next;
+            });
         });
     }, [channelsData]);
 
     useEffect(() => {
         if (selectedTag === 'all') return;
-        if (!availableTags.includes(selectedTag)) setSelectedTag('all');
+        if (!availableTags.includes(selectedTag)) deferStateUpdate(() => setSelectedTag('all'));
     }, [availableTags, selectedTag]);
 
     useEffect(() => {
@@ -171,12 +177,14 @@ export function Channel() {
             return;
         }
 
-        setSelectionMode(false);
-        setSelectedIds(new Set());
-        setSelectedTag('all');
-        useSearchStore.getState().setSearchTerm(pageKey, '');
-        useToolbarViewOptionsStore.getState().setChannelFilter('all');
-    }, [channelsData, clearPendingEditChannel, pendingEditChannelId]);
+        deferStateUpdate(() => {
+            setSelectionMode(false);
+            setSelectedIds(new Set());
+            setSelectedTag('all');
+            useSearchStore.getState().setSearchTerm(pageKey, '');
+            useToolbarViewOptionsStore.getState().setChannelFilter('all');
+        });
+    }, [channelsData, clearPendingEditChannel, pageKey, pendingEditChannelId]);
 
     const toggleSelectionMode = () => {
         setSelectionMode((prev) => {
@@ -291,34 +299,6 @@ export function Channel() {
                     </Button>
                 </div>
             </div>
-
-            {hasActiveFilters && (
-                <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card/60 p-2 text-xs">
-                    <span className="px-1 text-muted-foreground">{t('activeFilters')}</span>
-                    {searchTerm.trim() && (
-                        <FilterChip label={t('searchChip', { value: searchTerm.trim() })} onClear={() => useSearchStore.getState().setSearchTerm(pageKey, '')} />
-                    )}
-                    {filter !== 'all' && (
-                        <FilterChip label={filter === 'enabled' ? t('enabledChip') : t('disabledChip')} onClear={() => useToolbarViewOptionsStore.getState().setChannelFilter('all')} />
-                    )}
-                    {selectedTag !== 'all' && (
-                        <FilterChip label={t('tagChip', { value: selectedTag })} onClear={() => setSelectedTag('all')} />
-                    )}
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 rounded-lg px-2 text-xs"
-                        onClick={() => {
-                            useSearchStore.getState().setSearchTerm(pageKey, '');
-                            useToolbarViewOptionsStore.getState().setChannelFilter('all');
-                            setSelectedTag('all');
-                        }}
-                    >
-                        {t('clearFilters')}
-                    </Button>
-                </div>
-            )}
 
             {availableTags.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card/60 p-2">
@@ -477,9 +457,11 @@ function BatchEditDialog({
 
     useEffect(() => {
         if (!open) return;
-        setFields(DEFAULT_BATCH_FIELDS);
-        setTagInputValue('');
-        setTagPopoverOpen(false);
+        deferStateUpdate(() => {
+            setFields(DEFAULT_BATCH_FIELDS);
+            setTagInputValue('');
+            setTagPopoverOpen(false);
+        });
     }, [open]);
 
     const hasFields = Object.values(fields).some(Boolean);
@@ -783,21 +765,6 @@ function BatchEditDialog({
     );
 }
 
-function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
-    return (
-        <Badge variant="secondary" className="h-7 rounded-lg pl-2 pr-1 font-normal">
-            <span className="max-w-44 truncate">{label}</span>
-            <button
-                type="button"
-                onClick={onClear}
-                className="ml-1 rounded-md p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
-            >
-                <X className="size-3" />
-            </button>
-        </Badge>
-    );
-}
-
 function BatchDeletePreview({ channels }: { channels: ChannelType[] }) {
     const t = useTranslations('channel.batch');
     const keyCount = channels.reduce((sum, channel) => sum + channel.keys.length, 0);
@@ -853,8 +820,10 @@ function TagManagerDialog({
 
     useEffect(() => {
         if (!open) {
-            setEditingTag('');
-            setNewTag('');
+            deferStateUpdate(() => {
+                setEditingTag('');
+                setNewTag('');
+            });
         }
     }, [open]);
 

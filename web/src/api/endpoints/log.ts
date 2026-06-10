@@ -1,5 +1,5 @@
 import type { InfiniteData } from '@tanstack/react-query';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, API_BASE_URL } from '../client';
 import { logger } from '@/lib/logger';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -83,6 +83,16 @@ export function useClearLogs() {
 }
 
 const logsInfiniteQueryKey = (pageSize: number) => ['logs', 'infinite', pageSize] as const;
+const logDetailQueryKey = (id: number) => ['logs', 'detail', id] as const;
+
+export function useLogDetail(id: number, enabled: boolean) {
+    return useQuery({
+        queryKey: logDetailQueryKey(id),
+        queryFn: async () => apiClient.get<RelayLog>(`/api/v1/log/detail/${id}`),
+        enabled,
+        staleTime: Infinity,
+    });
+}
 
 /**
  * 日志管理 Hook
@@ -137,7 +147,7 @@ export function useLogs(options: { pageSize?: number } = {}) {
             }
         }
 
-        merged.sort((a, b) => b.time - a.time);
+        merged.sort((a, b) => b.time - a.time || b.id - a.id);
         return merged;
     }, [logsQuery.data]);
 

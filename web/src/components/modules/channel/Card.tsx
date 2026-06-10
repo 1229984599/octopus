@@ -17,6 +17,10 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
+function deferStateUpdate(update: () => void) {
+    queueMicrotask(update);
+}
+
 export function Card({
     channel,
     stats,
@@ -243,14 +247,16 @@ function CardDialog({
         }
         if (openedRef.current) return;
         openedRef.current = true;
-        setOpenInEditMode(true);
-        setIsOpen(true);
+        deferStateUpdate(() => {
+            setOpenInEditMode(true);
+            setIsOpen(true);
+        });
         onAutoOpenEdit?.(channel.id);
     }, [autoOpenEdit, channel.id, onAutoOpenEdit, setIsOpen]);
 
     useEffect(() => {
         if (isOpen) return;
-        setOpenInEditMode(false);
+        deferStateUpdate(() => setOpenInEditMode(false));
     }, [isOpen]);
 
     return (

@@ -46,6 +46,10 @@ function isImageChannelType(type: ChannelType): boolean {
     ].includes(type);
 }
 
+function deferStateUpdate(update: () => void) {
+    queueMicrotask(update);
+}
+
 export interface ChannelFormData {
     name: string;
     type: ChannelType;
@@ -77,6 +81,9 @@ export interface ChannelFormProps {
     pendingText: string;
     onCancel?: () => void;
     cancelText?: string;
+    onDelete?: () => void;
+    deleteText?: string;
+    deleteDisabled?: boolean;
     idPrefix?: string;
     channelId?: number;
 }
@@ -97,6 +104,9 @@ export function ChannelForm({
     pendingText,
     onCancel,
     cancelText,
+    onDelete,
+    deleteText,
+    deleteDisabled,
     idPrefix = 'channel',
     channelId,
 }: ChannelFormProps) {
@@ -157,10 +167,12 @@ export function ChannelForm({
 
     useEffect(() => {
         const savedModel = formData.check_model?.trim() ?? '';
-        setCheckModel((current) => {
-            if (savedModel) return savedModel;
-            if (current && checkModelOptions.includes(current)) return current;
-            return checkModelOptions[0] ?? '';
+        deferStateUpdate(() => {
+            setCheckModel((current) => {
+                if (savedModel) return savedModel;
+                if (current && checkModelOptions.includes(current)) return current;
+                return checkModelOptions[0] ?? '';
+            });
         });
     }, [checkModelOptions, formData.check_model]);
 
@@ -219,25 +231,6 @@ export function ChannelForm({
             .map((key) => key.id as number),
         [formData.keys]
     );
-    const groupedCheckResults = useMemo(() => {
-        const groups = {
-            ok: [] as ChannelKeyCheckResult[],
-            invalid: [] as ChannelKeyCheckResult[],
-            rateLimited: [] as ChannelKeyCheckResult[],
-            server: [] as ChannelKeyCheckResult[],
-            other: [] as ChannelKeyCheckResult[],
-        };
-        Object.values(checkResults).forEach((result) => {
-            if (result.ok) groups.ok.push(result);
-            else if (result.status_code === 401 || result.status_code === 403) groups.invalid.push(result);
-            else if (result.status_code === 429) groups.rateLimited.push(result);
-            else if (result.status_code >= 500) groups.server.push(result);
-            else groups.other.push(result);
-        });
-        return groups;
-    }, [checkResults]);
-    const hasGroupedCheckResults = Object.values(groupedCheckResults).some((items) => items.length > 0);
-
     const updateModels = (nextAuto: string[], nextCustom: string[]) => {
         const model = nextAuto.join(',');
         const custom_model = nextCustom.join(',');
@@ -849,41 +842,6 @@ export function ChannelForm({
                         </Button>
                     </div>
                 </div>
-                {canManageExistingKeys && hasGroupedCheckResults && (
-                    <div className="grid gap-2 rounded-2xl border border-border bg-muted/25 p-2 sm:grid-cols-2 lg:grid-cols-5">
-                        <CheckResultGroup
-                            label={keyT('groupOk')}
-                            results={groupedCheckResults.ok}
-                            tone="ok"
-                        />
-                        <CheckResultGroup
-                            label={keyT('groupInvalid')}
-                            results={groupedCheckResults.invalid}
-                            tone="bad"
-                            actionLabel={keyT('deleteInvalid')}
-                            onAction={() => handleDeleteKeys(groupedCheckResults.invalid.map((item) => item.id).filter(Boolean))}
-                            actionDisabled={updateChannel.isPending || groupedCheckResults.invalid.length === 0}
-                        />
-                        <CheckResultGroup
-                            label={keyT('groupRateLimited')}
-                            results={groupedCheckResults.rateLimited}
-                            tone="warn"
-                        />
-                        <CheckResultGroup
-                            label={keyT('groupServer')}
-                            results={groupedCheckResults.server}
-                            tone="warn"
-                            actionLabel={keyT('disableSelected')}
-                            onAction={() => handleDisableKeys(groupedCheckResults.server.map((item) => item.id).filter(Boolean))}
-                            actionDisabled={updateChannel.isPending || groupedCheckResults.server.length === 0}
-                        />
-                        <CheckResultGroup
-                            label={keyT('groupOther')}
-                            results={groupedCheckResults.other}
-                            tone="warn"
-                        />
-                    </div>
-                )}
                 <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
                     {(formData.keys ?? []).map((k, idx) => (
                         <div
@@ -1276,7 +1234,18 @@ export function ChannelForm({
                 </div>
             </div>
 
-            <div className={`flex flex-col gap-3 pt-2 ${onCancel ? 'sm:flex-row' : ''}`}>
+            <div className={`flex flex-col gap-3 pt-2 ${onCancel || onDelete ? 'sm:flex-row' : ''}`}>
+                {onDelete && deleteText && (
+                    <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={onDelete}
+                        disabled={deleteDisabled}
+                        className="w-full sm:flex-1 rounded-2xl h-12"
+                    >
+                        {deleteText}
+                    </Button>
+                )}
                 {onCancel && cancelText && (
                     <Button
                         type="button"
@@ -1296,61 +1265,5 @@ export function ChannelForm({
                 </Button>
             </div>
         </form>
-    );
-}
-
-function CheckResultGroup({
-    label,
-    results,
-    tone,
-    actionLabel,
-    onAction,
-    actionDisabled,
-}: {
-    label: string;
-    results: ChannelKeyCheckResult[];
-    tone: 'ok' | 'bad' | 'warn';
-    actionLabel?: string;
-    onAction?: () => void;
-    actionDisabled?: boolean;
-}) {
-    const keyT = useTranslations('channel.detail.keyCheck');
-    const sample = results.find((item) => item.error);
-
-    return (
-        <div
-            className={cn(
-                'rounded-xl border p-2',
-                tone === 'ok' && 'border-emerald-500/20 bg-emerald-500/10',
-                tone === 'bad' && 'border-red-500/20 bg-red-500/10',
-                tone === 'warn' && 'border-amber-500/20 bg-amber-500/10'
-            )}
-        >
-            <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                    <div className="truncate text-xs font-medium">{label}</div>
-                    <div className="text-lg font-semibold tabular-nums">{results.length}</div>
-                </div>
-                {sample && (
-                    <CheckResultDetail
-                        ok={tone === 'ok'}
-                        label={keyT('detail')}
-                        detail={sample.error}
-                    />
-                )}
-            </div>
-            {actionLabel && onAction && (
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-2 h-7 w-full rounded-lg text-xs"
-                    onClick={onAction}
-                    disabled={actionDisabled}
-                >
-                    {actionLabel}
-                </Button>
-            )}
-        </div>
     );
 }

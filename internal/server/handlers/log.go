@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/1229984599/octopus/internal/server/resp"
 	"github.com/1229984599/octopus/internal/server/router"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func init() {
@@ -19,6 +21,10 @@ func init() {
 		AddRoute(
 			router.NewRoute("/list", http.MethodGet).
 				Handle(listLog),
+		).
+		AddRoute(
+			router.NewRoute("/detail/:id", http.MethodGet).
+				Handle(getLogDetail),
 		).
 		AddRoute(
 			router.NewRoute("/clear", http.MethodDelete).
@@ -72,6 +78,26 @@ func listLog(c *gin.Context) {
 	}
 
 	resp.Success(c, logs)
+}
+
+func getLogDetail(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		resp.Error(c, http.StatusBadRequest, "invalid log id")
+		return
+	}
+
+	log, err := op.RelayLogGet(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			resp.Error(c, http.StatusNotFound, "log not found")
+			return
+		}
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	resp.Success(c, log)
 }
 
 func clearLog(c *gin.Context) {
