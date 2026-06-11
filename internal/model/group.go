@@ -65,7 +65,7 @@ type GroupItem struct {
 	ID               int    `json:"id" gorm:"primaryKey"`
 	GroupID          int    `json:"group_id" gorm:"not null;index:idx_group_channel_model,unique"` // 创建时不携带此字段,更新时需要
 	ChannelID        int    `json:"channel_id" gorm:"not null;index:idx_group_channel_model,unique"`
-	ModelName        string `json:"model_name" gorm:"not null;index:idx_group_channel_model,unique"`
+	ModelName        string `json:"model_name" gorm:"not null;size:191;index:idx_group_channel_model,unique"`
 	Priority         int    `json:"priority"`
 	Weight           int    `json:"weight" gorm:"default:1"`
 	RetryCount       int    `json:"retry_count" gorm:"default:0"`
@@ -115,7 +115,7 @@ type GroupAutoExcludedItem struct {
 	ID               int       `json:"id" gorm:"primaryKey"`
 	GroupID          int       `json:"group_id" gorm:"not null;uniqueIndex:idx_group_auto_excluded_key;index"`
 	ChannelID        int       `json:"channel_id" gorm:"not null;uniqueIndex:idx_group_auto_excluded_key"`
-	ModelName        string    `json:"model_name" gorm:"not null;uniqueIndex:idx_group_auto_excluded_key"`
+	ModelName        string    `json:"model_name" gorm:"not null;size:191;uniqueIndex:idx_group_auto_excluded_key"`
 	Reason           string    `json:"reason"`
 	LastCheckOK      *bool     `json:"last_check_ok,omitempty"`
 	LastCheckMessage string    `json:"last_check_message,omitempty"`
