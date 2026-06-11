@@ -13,8 +13,27 @@ export interface GroupItem {
     priority: number;
     weight: number;
     retry_count: number;
+    last_check_ok?: boolean;
+    last_check_message?: string;
+    auto_excluded?: boolean;
+    failed_count?: number;
+    last_checked_at?: string;
+    next_check_at?: string;
 }
 
+
+export interface GroupExcludedItem {
+    id: number;
+    group_id: number;
+    channel_id: number;
+    model_name: string;
+    reason?: string;
+    last_check_ok?: boolean;
+    last_check_message?: string;
+    failed_count?: number;
+    last_checked_at?: string;
+    next_check_at?: string;
+}
 /**
  * 分组模式
  */
@@ -39,6 +58,7 @@ export enum GroupCapability {
 export interface Group {
     id?: number;
     name: string;
+    sort_order?: number;
     mode: GroupMode;
     capability: GroupCapability;
     match_regex: string;
@@ -46,6 +66,7 @@ export interface Group {
     session_keep_time?: number;
     auto_check: boolean;
     items?: GroupItem[];
+    excluded_items?: GroupExcludedItem[];
 }
 
 /**
@@ -74,7 +95,8 @@ export interface GroupItemUpdateRequest {
  */
 export interface GroupUpdateRequest {
     id: number;
-    name?: string;                        // 仅在名称变更时发送
+    name?: string;
+    sort_order?: number;                  // 自定义排序
     mode?: GroupMode;                     // 仅在模式变更时发送
     capability?: GroupCapability;          // 请求/模型能力类型
     match_regex?: string;                 // 仅在匹配正则变更时发送
@@ -191,6 +213,39 @@ export function useCheckGroupItem() {
         },
         onError: (error) => {
             logger.error('分组渠道检测失败:', error);
+        },
+    });
+}
+
+export function useCheckGroupExcludedItem() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (data: { excluded_item_id: number; mode?: string; capability?: GroupCapability }) => {
+            return apiClient.post<GroupItemCheckResult[]>('/api/v1/group/check-excluded-item', data);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });
+            queryClient.invalidateQueries({ queryKey: ['groups', 'list'] });
+        },
+        onError: (error) => {
+            logger.error('隔离模型检测失败:', error);
+        },
+    });
+}
+
+export function useRestoreGroupExcludedItem() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (excludedItemId: number) => {
+            return apiClient.post<null>('/api/v1/group/restore-excluded-item', { excluded_item_id: excludedItemId });
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['groups', 'list'] });
+        },
+        onError: (error) => {
+            logger.error('隔离模型恢复失败:', error);
         },
     });
 }

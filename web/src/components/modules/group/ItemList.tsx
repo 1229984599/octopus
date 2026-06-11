@@ -22,6 +22,8 @@ export interface SelectedMember extends LLMChannel {
     item_id?: number;
     weight?: number;
     retry_count?: number;
+    check_ok?: boolean;
+    check_message?: string;
 }
 
 export type MemberCheckState = {
@@ -196,11 +198,11 @@ function MemberItem({
                     </motion.button>
                 )}
 
-                {checkState && (
+                {(checkState || member.check_ok !== undefined) && (
                     <CheckResultDetail
-                        ok={checkState.ok}
-                        label={checkState.ok ? t('form.checkOk') : t('form.checkBad')}
-                        detail={checkState.detail ?? checkState.message}
+                        ok={checkState?.ok ?? member.check_ok ?? false}
+                        label={(checkState?.ok ?? member.check_ok) ? t('form.checkOk') : t('form.checkBad')}
+                        detail={checkState?.detail ?? checkState?.message ?? member.check_message}
                     />
                 )}
 
@@ -430,3 +432,4 @@ export function MemberList({
         </div>
     );
 }
+

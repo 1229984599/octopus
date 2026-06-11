@@ -57,6 +57,7 @@ func InitDB(dbType, dsn string, debug bool) error {
 		&model.ChannelKey{},
 		&model.Group{},
 		&model.GroupItem{},
+		&model.GroupAutoExcludedItem{},
 		&model.LLMInfo{},
 		&model.APIKey{},
 		&model.Setting{},

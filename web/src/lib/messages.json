@@ -407,7 +407,11 @@
             "deleted": "删除成功",
             "autoAddFailed": "自动添加失败",
             "checkDone": "检测完成",
-            "checkFailed": "检测失败"
+            "checkFailed": "检测失败",
+            "restoreDone": "已恢复",
+            "restoreFailed": "恢复失败",
+            "sorted": "排序已保存",
+            "sortFailed": "排序保存失败"
         },
         "create": {
             "title": "创建分组",
@@ -415,7 +419,11 @@
             "submitting": "创建中..."
         },
         "card": {
-            "empty": "暂无规则"
+            "empty": "暂无规则",
+            "modelCount": "模型",
+            "excludedCount": "隔离",
+            "failedCount": "异常",
+            "disabledCount": "禁用"
         },
         "detail": {
             "actions": {
@@ -424,7 +432,10 @@
                 "save": "保存",
                 "copyName": "复制名称",
                 "delete": "删除",
-                "confirmDelete": "确认删除"
+                "confirmDelete": "确认删除",
+                "dragSort": "拖动排序",
+                "dropBefore": "放到前面",
+                "dropAfter": "放到后面"
             }
         },
         "form": {
@@ -437,6 +448,8 @@
             "sessionKeepTime": "会话保持",
             "sessionKeepTimeHint": "单位秒，会话期间保持使用同一渠道，0 表示禁用",
             "items": "已选模型",
+            "excludedItems": "隔离模型",
+            "noExcludedItems": "暂无隔离模型",
             "addItem": "添加模型",
             "autoAdd": "自动添加",
             "clear": "清空",
@@ -446,6 +459,7 @@
             "autoCheck": "自动检测",
             "openChannel": "打开渠道编辑",
             "checkItem": "检测渠道",
+            "restoreExcluded": "恢复到分组",
             "checkAll": "检测全部",
             "deleteFailed": "删除异常",
             "deleteDisabled": "删除禁用",

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Trash2, X, Pencil } from 'lucide-react';
+import { useState, useMemo, useCallback, type ButtonHTMLAttributes } from 'react';
+import { GripVertical, Trash2, X, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { type Group, useDeleteGroup, useUpdateGroup } from '@/api/endpoints/group';
 import { useModelChannelList } from '@/api/endpoints/model';
@@ -12,7 +12,6 @@ import { toast } from '@/components/common/Toast';
 import { CopyIconButton } from '@/components/common/CopyButton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/animate-ui/components/animate/tooltip';
 import type { SelectedMember } from './ItemList';
-import { MemberList } from './ItemList';
 import { GroupEditor, type GroupEditorValues } from './Editor';
 import { buildChannelNameByModelKey, modelChannelKey, MODE_LABELS } from './utils';
 import { GroupCapability, GroupMode, type GroupUpdateRequest } from '@/api/endpoints/group';
@@ -62,6 +61,7 @@ function EditDialogContent({ group, displayMembers, isSubmitting, onSubmit, onOp
                         session_keep_time: group.session_keep_time ?? 0,
                         auto_check: group.auto_check ?? true,
                         members: displayMembers,
+                        excludedItems: group.excluded_items ?? [],
                     }}
                     submitText={t('detail.actions.save')}
                     submittingText={t('create.submitting')}
@@ -78,7 +78,15 @@ function EditDialogContent({ group, displayMembers, isSubmitting, onSubmit, onOp
     );
 }
 
-export function GroupCard({ group }: { group: Group }) {
+export function GroupCard({
+    group,
+    dragHandleProps,
+    dragDisabled = false,
+}: {
+    group: Group;
+    dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement> | null;
+    dragDisabled?: boolean;
+}) {
     const t = useTranslations('group');
     const updateGroup = useUpdateGroup();
     const deleteGroup = useDeleteGroup();
@@ -86,11 +94,6 @@ export function GroupCard({ group }: { group: Group }) {
     const { data: channelsData = [] } = useChannelList();
 
     const [confirmDelete, setConfirmDelete] = useState(false);
-    const [members, setMembers] = useState<SelectedMember[]>([]);
-    const isDragging = useRef(false);
-    const memberUpdateTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
-    const membersRef = useRef<SelectedMember[]>([]);
-
     const channelNameByKey = useMemo(() => buildChannelNameByModelKey(modelChannels), [modelChannels]);
     const channelNameById = useMemo(() => {
         const map = new Map<number, string>();
@@ -119,28 +122,11 @@ export function GroupCard({ group }: { group: Group }) {
                 item_id: item.id,
                 weight: item.weight,
                 retry_count: item.retry_count ?? 0,
+                check_ok: item.last_check_ok,
+                check_message: item.last_check_message,
             })),
         [group.items, channelNameById, channelNameByKey, enabledByKey]
     );
-
-    useEffect(() => {
-        if (isDragging.current) return;
-        const nextMembers = [...displayMembers];
-        const frame = requestAnimationFrame(() => setMembers(nextMembers));
-        return () => cancelAnimationFrame(frame);
-    }, [displayMembers]);
-
-    useEffect(() => {
-        membersRef.current = members;
-    }, [members]);
-
-    useEffect(() => {
-        const timers = memberUpdateTimersRef.current;
-        return () => {
-            timers.forEach((timer) => clearTimeout(timer));
-            timers.clear();
-        };
-    }, []);
 
     const onSuccess = useCallback(() => toast.success(t('toast.updated')), [t]);
     const onError = useCallback((error: Error) => toast.error(t('toast.updateFailed'), { description: error.message }), [t]);
@@ -152,74 +138,6 @@ export function GroupCard({ group }: { group: Group }) {
         if (typeof v !== 'object' || v === null) return false;
         return 'mode' in v && typeof (v as { mode?: unknown }).mode === 'number';
     })();
-
-    const priorityByItemId = useMemo(() => {
-        const map = new Map<number, number>();
-        (group.items || []).forEach((item) => {
-            if (item.id !== undefined) map.set(item.id, item.priority);
-        });
-        return map;
-    }, [group.items]);
-
-    const handleDragStart = useCallback(() => { isDragging.current = true; }, []);
-    const handleDragFinish = useCallback(() => { isDragging.current = false; }, []);
-
-    const handleDropReorder = useCallback((nextMembers: SelectedMember[]) => {
-        const itemsToUpdate = nextMembers
-            .map((m, i) => ({ member: m, newPriority: i + 1 }))
-            .filter(({ member, newPriority }) => {
-                if (!member.item_id) return false;
-                const origPriority = priorityByItemId.get(member.item_id);
-                return origPriority !== undefined && origPriority !== newPriority;
-            })
-            .map(({ member, newPriority }) => ({
-                id: member.item_id!,
-                priority: newPriority,
-                weight: member.weight ?? 1,
-                retry_count: member.retry_count ?? 0,
-            }));
-        if (itemsToUpdate.length > 0) updateGroup.mutate({ id: group.id!, items_to_update: itemsToUpdate }, { onSuccess, onError });
-    }, [group.id, priorityByItemId, updateGroup, onSuccess, onError]);
-
-    const handleRemoveMember = useCallback((id: string) => {
-        const member = members.find((m) => m.id === id);
-        if (member?.item_id !== undefined) updateGroup.mutate({ id: group.id!, items_to_delete: [member.item_id] }, { onSuccess, onError });
-    }, [members, group.id, updateGroup, onSuccess, onError]);
-
-    const queueMemberUpdate = useCallback((id: string) => {
-        const previous = memberUpdateTimersRef.current.get(id);
-        if (previous) clearTimeout(previous);
-        const timer = setTimeout(() => {
-            memberUpdateTimersRef.current.delete(id);
-            const member = membersRef.current.find((m) => m.id === id);
-            if (!member?.item_id) return;
-            const priority = priorityByItemId.get(member.item_id);
-            if (!priority) return;
-            updateGroup.mutate(
-                {
-                    id: group.id!,
-                    items_to_update: [{
-                        id: member.item_id,
-                        priority,
-                        weight: member.weight ?? 1,
-                        retry_count: member.retry_count ?? 0,
-                    }],
-                },
-                { onSuccess, onError }
-            );
-        }, 500);
-        memberUpdateTimersRef.current.set(id, timer);
-    }, [group.id, priorityByItemId, updateGroup, onSuccess, onError]);
-
-    const handleWeightChange = useCallback((id: string, weight: number) => {
-        setMembers((prev) => prev.map((m) => m.id === id ? { ...m, weight } : m));
-        queueMemberUpdate(id);
-    }, [queueMemberUpdate]);
-
-    const handleRetryCountChange = useCallback((id: string, retryCount: number) => {
-        setMembers((prev) => prev.map((m) => m.id === id ? { ...m, retry_count: retryCount } : m));
-        queueMemberUpdate(id);
-    }, [queueMemberUpdate]);
 
     const handleOpenMemberChannel = useCallback((member: SelectedMember) => {
         openChannelEditor(member.channel_id);
@@ -307,19 +225,38 @@ export function GroupCard({ group }: { group: Group }) {
         [GroupCapability.Image]: '图片',
     }[group.capability ?? GroupCapability.Auto];
 
+    const memberCount = group.items?.length ?? 0;
+    const excludedCount = group.excluded_items?.length ?? 0;
+    const failedCheckCount = (group.items ?? []).filter((item) => item.last_check_ok === false).length;
+    const disabledCount = displayMembers.filter((member) => member.enabled === false).length;
+
     return (
-        <article className="flex flex-col rounded-3xl border border-border bg-card text-card-foreground p-4 custom-shadow">
+        <article data-group-card className="flex flex-col rounded-3xl border border-border bg-card text-card-foreground p-4 custom-shadow">
             <header className="flex items-start justify-between mb-3 relative overflow-visible rounded-xl -mx-1 px-1 -my-1 py-1">
-                <div className="relative flex-1 mr-2 min-w-0 group/title">
-                    <Tooltip side="top" sideOffset={10} align="center">
-                        <TooltipTrigger asChild>
-                            <h3 className="text-lg font-bold truncate">{group.name}</h3>
-                        </TooltipTrigger>
-                        <TooltipContent key={group.name}>{group.name}</TooltipContent>
-                    </Tooltip>
-                    <span className="mt-1 inline-flex max-w-full rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                        {capabilityLabel}
-                    </span>
+                <div className="relative flex flex-1 items-start gap-1.5 mr-2 min-w-0 group/title">
+                    <button
+                        type="button"
+                        disabled={dragDisabled || !dragHandleProps}
+                        className={cn(
+                            'mt-0.5 shrink-0 rounded-md p-1 text-muted-foreground transition-colors',
+                            dragDisabled || !dragHandleProps ? 'cursor-not-allowed opacity-40' : 'cursor-grab hover:bg-muted hover:text-foreground active:cursor-grabbing'
+                        )}
+                        title={t('detail.actions.dragSort')}
+                        {...(dragHandleProps ?? {})}
+                    >
+                        <GripVertical className="size-4" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                        <Tooltip side="top" sideOffset={10} align="center">
+                            <TooltipTrigger asChild>
+                                <h3 className="text-lg font-bold truncate">{group.name}</h3>
+                            </TooltipTrigger>
+                            <TooltipContent key={group.name}>{group.name}</TooltipContent>
+                        </Tooltip>
+                        <span className="mt-1 inline-flex max-w-full rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            {capabilityLabel}
+                        </span>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
@@ -408,22 +345,29 @@ export function GroupCard({ group }: { group: Group }) {
                 ))}
             </div>
 
-            <section className="rounded-xl border border-border/50 bg-muted/30 overflow-hidden relative h-101">
-                <MemberList
-                    members={members}
-                    onReorder={setMembers}
-                    onRemove={handleRemoveMember}
-                    onWeightChange={handleWeightChange}
-                    onRetryCountChange={handleRetryCountChange}
-                    onOpenChannel={handleOpenMemberChannel}
-                    onDragStart={handleDragStart}
-                    onDrop={handleDropReorder}
-                    onDragFinish={handleDragFinish}
-                    autoScrollOnAdd={false}
-                    showWeight={group.mode === GroupMode.Weighted}
-                    layoutScope={`card-${group.id ?? 'unknown'}`}
-                />
+            <section className="grid grid-cols-2 gap-2 rounded-xl border border-border/50 bg-muted/30 p-3 text-xs sm:grid-cols-4">
+                <div className="rounded-lg bg-background/70 px-2.5 py-2">
+                    <div className="text-[10px] text-muted-foreground">{t('card.modelCount')}</div>
+                    <div className="mt-1 text-base font-semibold text-foreground">{memberCount}</div>
+                </div>
+                <div className="rounded-lg bg-background/70 px-2.5 py-2">
+                    <div className="text-[10px] text-muted-foreground">{t('card.excludedCount')}</div>
+                    <div className="mt-1 text-base font-semibold text-foreground">{excludedCount}</div>
+                </div>
+                <div className="rounded-lg bg-background/70 px-2.5 py-2">
+                    <div className="text-[10px] text-muted-foreground">{t('card.failedCount')}</div>
+                    <div className={cn('mt-1 text-base font-semibold', failedCheckCount > 0 ? 'text-destructive' : 'text-foreground')}>
+                        {failedCheckCount}
+                    </div>
+                </div>
+                <div className="rounded-lg bg-background/70 px-2.5 py-2">
+                    <div className="text-[10px] text-muted-foreground">{t('card.disabledCount')}</div>
+                    <div className={cn('mt-1 text-base font-semibold', disabledCount > 0 ? 'text-destructive' : 'text-foreground')}>
+                        {disabledCount}
+                    </div>
+                </div>
             </section>
         </article >
     );
 }
+

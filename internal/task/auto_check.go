@@ -69,22 +69,24 @@ type AutoHealthCheckLog struct {
 }
 
 type autoHealthCheckSummary struct {
-	StartedAt          time.Time `json:"started_at"`
-	FinishedAt         time.Time `json:"finished_at"`
-	CheckedChannels    int       `json:"checked_channels"`
-	SkippedChannels    int       `json:"skipped_channels"`
-	CheckedKeys        int       `json:"checked_keys"`
-	DeletedKeys        int       `json:"deleted_keys"`
-	DisabledChannels   int       `json:"disabled_channels"`
-	CheckedGroups      int       `json:"checked_groups"`
-	SkippedGroups      int       `json:"skipped_groups"`
-	CheckedGroupItems  int       `json:"checked_group_items"`
-	SkippedGroupItems  int       `json:"skipped_group_items"`
-	DeletedGroupItems  int       `json:"deleted_group_items"`
-	DeletedKeyDetails  []string  `json:"deleted_key_details"`
-	DisabledDetails    []string  `json:"disabled_details"`
-	DeletedItemDetails []string  `json:"deleted_item_details"`
-	Errors             []string  `json:"errors"`
+	StartedAt           time.Time `json:"started_at"`
+	FinishedAt          time.Time `json:"finished_at"`
+	CheckedChannels     int       `json:"checked_channels"`
+	SkippedChannels     int       `json:"skipped_channels"`
+	CheckedKeys         int       `json:"checked_keys"`
+	DeletedKeys         int       `json:"deleted_keys"`
+	DisabledChannels    int       `json:"disabled_channels"`
+	CheckedGroups       int       `json:"checked_groups"`
+	SkippedGroups       int       `json:"skipped_groups"`
+	CheckedGroupItems   int       `json:"checked_group_items"`
+	SkippedGroupItems   int       `json:"skipped_group_items"`
+	DeletedGroupItems   int       `json:"deleted_group_items"`
+	RecoveredGroupItems int       `json:"recovered_group_items"`
+	RecoveryCheckItems  int       `json:"recovery_check_items"`
+	DeletedKeyDetails   []string  `json:"deleted_key_details"`
+	DisabledDetails     []string  `json:"disabled_details"`
+	DeletedItemDetails  []string  `json:"deleted_item_details"`
+	Errors              []string  `json:"errors"`
 }
 
 func UpdateAutoHealthCheckTask() {
@@ -391,6 +393,10 @@ func runAutoHealthCheck(ctx context.Context) (summary autoHealthCheckSummary) {
 		updateAutoHealthCheckProgress("checking_channel", "渠道 Key 检测进度已更新", current, summary)
 	}
 
+	if ctx.Err() == nil {
+		checkRecoverableGroupItems(ctx, &summary)
+	}
+
 	if ctx.Err() != nil {
 		summary.Errors = append(summary.Errors, ctx.Err().Error())
 	}
@@ -398,6 +404,70 @@ func runAutoHealthCheck(ctx context.Context) (summary autoHealthCheckSummary) {
 	return
 }
 
+func checkRecoverableGroupItems(ctx context.Context, summary *autoHealthCheckSummary) {
+	updateAutoHealthCheckProgress("checking_group_recovery", "正在检测可恢复的分组模型...", "", *summary)
+	excludedItems, err := op.GroupAutoExcludedItemsDue(ctx, time.Now(), 100)
+	if err != nil {
+		errText := fmt.Sprintf("list recoverable group items: %v", err)
+		summary.Errors = append(summary.Errors, errText)
+		appendAutoHealthCheckLog("error", "读取可恢复分组模型失败", errText)
+		return
+	}
+	if len(excludedItems) == 0 {
+		return
+	}
+	for _, excluded := range excludedItems {
+		if ctx.Err() != nil {
+			summary.Errors = append(summary.Errors, ctx.Err().Error())
+			return
+		}
+		current := fmt.Sprintf("分组 %d / %s / 渠道 %d", excluded.GroupID, excluded.ModelName, excluded.ChannelID)
+		updateAutoHealthCheckProgress("checking_group_recovery", "正在探测可恢复的分组模型...", current, *summary)
+		channel, err := op.ChannelGet(excluded.ChannelID, ctx)
+		if err != nil {
+			if recErr := op.GroupAutoExcludedItemRecordCheck(ctx, excluded, false, err.Error()); recErr != nil {
+				summary.Errors = append(summary.Errors, fmt.Sprintf("record recovery failure for excluded item %d: %v", excluded.ID, recErr))
+			}
+			appendAutoHealthCheckLog("warn", "分组模型恢复探测跳过", fmt.Sprintf("%s\n错误: %v", current, err))
+			continue
+		}
+		if !channel.AutoCheck || !channel.Enabled {
+			message := "渠道未启用自动检测或已禁用"
+			if recErr := op.GroupAutoExcludedItemRecordCheck(ctx, excluded, false, message); recErr != nil {
+				summary.Errors = append(summary.Errors, fmt.Sprintf("record recovery skip for excluded item %d: %v", excluded.ID, recErr))
+			}
+			appendAutoHealthCheckLog("warn", "分组模型恢复探测跳过", current+"\n"+message)
+			continue
+		}
+		checkChannel := activeKeyChannel(*channel)
+		if len(checkChannel.Keys) == 0 {
+			message := "渠道没有可用 Key"
+			if recErr := op.GroupAutoExcludedItemRecordCheck(ctx, excluded, false, message); recErr != nil {
+				summary.Errors = append(summary.Errors, fmt.Sprintf("record recovery no-key for excluded item %d: %v", excluded.ID, recErr))
+			}
+			appendAutoHealthCheckLog("warn", "分组模型恢复探测跳过", current+"\n"+message)
+			continue
+		}
+		keyLabels := channelKeyLabels(checkChannel.Keys)
+		results := helper.CheckChannelKeys(ctx, checkChannel, excluded.ModelName, nil)
+		summary.RecoveryCheckItems++
+		summary.CheckedKeys += len(results)
+		ok := anyResultOK(results)
+		message := checkResultSummary(results)
+		if err := op.GroupAutoExcludedItemRecordCheck(ctx, excluded, ok, message); err != nil {
+			errText := fmt.Sprintf("record recovery check for excluded item %d: %v", excluded.ID, err)
+			summary.Errors = append(summary.Errors, errText)
+			appendAutoHealthCheckLog("error", "保存分组模型恢复探测结果失败", errText)
+			continue
+		}
+		if ok {
+			summary.RecoveredGroupItems++
+			appendAutoHealthCheckLog("info", "分组模型已恢复", strings.Join([]string{current, "模型: " + excluded.ModelName, checkResultsDetail(results, keyLabels)}, "\n"))
+			continue
+		}
+		appendAutoHealthCheckLog("warn", "分组模型恢复探测未通过", strings.Join([]string{current, "模型: " + excluded.ModelName, checkResultsDetail(results, keyLabels)}, "\n"))
+	}
+}
 func mergeAutoHealthCheckSummary(summary *autoHealthCheckSummary, delta autoHealthCheckSummary) {
 	summary.CheckedChannels += delta.CheckedChannels
 	summary.SkippedChannels += delta.SkippedChannels
@@ -409,6 +479,8 @@ func mergeAutoHealthCheckSummary(summary *autoHealthCheckSummary, delta autoHeal
 	summary.CheckedGroupItems += delta.CheckedGroupItems
 	summary.SkippedGroupItems += delta.SkippedGroupItems
 	summary.DeletedGroupItems += delta.DeletedGroupItems
+	summary.RecoveredGroupItems += delta.RecoveredGroupItems
+	summary.RecoveryCheckItems += delta.RecoveryCheckItems
 	summary.DeletedKeyDetails = append(summary.DeletedKeyDetails, delta.DeletedKeyDetails...)
 	summary.DisabledDetails = append(summary.DisabledDetails, delta.DisabledDetails...)
 	summary.DeletedItemDetails = append(summary.DeletedItemDetails, delta.DeletedItemDetails...)
@@ -924,6 +996,9 @@ func (s autoHealthCheckSummary) dingTalkContent() string {
 	}
 	b.WriteString(fmt.Sprintf("渠道: 检测 %d, 跳过 %d, 禁用 %d\n", s.CheckedChannels, s.SkippedChannels, s.DisabledChannels))
 	b.WriteString(fmt.Sprintf("Key: 检测 %d, 删除 %d\n", s.CheckedKeys, s.DeletedKeys))
+	if s.RecoveryCheckItems > 0 || s.RecoveredGroupItems > 0 {
+		b.WriteString(fmt.Sprintf("恢复探测: 检测 %d, 恢复 %d\n", s.RecoveryCheckItems, s.RecoveredGroupItems))
+	}
 	if len(s.DisabledDetails) > 0 {
 		appendLimitedLines(&b, "禁用渠道", s.DisabledDetails)
 	}

@@ -3,10 +3,12 @@ package op
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/1229984599/octopus/internal/db"
 	"github.com/1229984599/octopus/internal/model"
 	"github.com/1229984599/octopus/internal/utils/cache"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -101,6 +103,10 @@ func GroupUpdate(req *model.GroupUpdateRequest, ctx context.Context) (*model.Gro
 		selectFields = append(selectFields, "name")
 		updates.Name = *req.Name
 	}
+	if req.SortOrder != nil {
+		selectFields = append(selectFields, "sort_order")
+		updates.SortOrder = *req.SortOrder
+	}
 	if req.Mode != nil {
 		selectFields = append(selectFields, "mode")
 		updates.Mode = *req.Mode
@@ -138,6 +144,10 @@ func GroupUpdate(req *model.GroupUpdateRequest, ctx context.Context) (*model.Gro
 
 	// 删除 items
 	if len(req.ItemsToDelete) > 0 {
+		if err := markAutoExcludedItemsTx(tx, req.ID, req.ItemsToDelete, "manual_delete"); err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("failed to record excluded items: %w", err)
+		}
 		if err := tx.Where("id IN ? AND group_id = ?", req.ItemsToDelete, req.ID).Delete(&model.GroupItem{}).Error; err != nil {
 			tx.Rollback()
 			return nil, fmt.Errorf("failed to delete items: %w", err)
@@ -190,6 +200,10 @@ func GroupUpdate(req *model.GroupUpdateRequest, ctx context.Context) (*model.Gro
 				RetryCount: normalizeNonNegative(item.RetryCount),
 			}
 		}
+		if err := clearAutoExcludedItemsTx(tx, req.ID, req.ItemsToAdd); err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("failed to clear auto excluded items: %w", err)
+		}
 		if err := tx.Create(&newItems).Error; err != nil {
 			tx.Rollback()
 			return nil, fmt.Errorf("failed to create items: %w", err)
@@ -213,6 +227,58 @@ func GroupUpdate(req *model.GroupUpdateRequest, ctx context.Context) (*model.Gro
 	return &group, nil
 }
 
+func clearAutoExcludedItemsTx(tx *gorm.DB, groupID int, items []model.GroupItemAddRequest) error {
+	if len(items) == 0 {
+		return nil
+	}
+	conditions := make([][]interface{}, 0, len(items))
+	for _, item := range items {
+		if item.ChannelID == 0 || item.ModelName == "" {
+			continue
+		}
+		conditions = append(conditions, []interface{}{groupID, item.ChannelID, item.ModelName})
+	}
+	if len(conditions) == 0 {
+		return nil
+	}
+	return tx.Where("(group_id, channel_id, model_name) IN ?", conditions).Delete(&model.GroupAutoExcludedItem{}).Error
+}
+
+func markAutoExcludedItemsTx(tx *gorm.DB, groupID int, itemIDs []int, reason string) error {
+	if len(itemIDs) == 0 {
+		return nil
+	}
+	var items []model.GroupItem
+	if err := tx.Where("id IN ? AND group_id = ?", itemIDs, groupID).Find(&items).Error; err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	now := time.Now()
+	excluded := make([]model.GroupAutoExcludedItem, 0, len(items))
+	for _, item := range items {
+		if item.ChannelID == 0 || item.ModelName == "" {
+			continue
+		}
+		excluded = append(excluded, model.GroupAutoExcludedItem{
+			GroupID:       groupID,
+			ChannelID:     item.ChannelID,
+			ModelName:     item.ModelName,
+			Reason:        reason,
+			FailedCount:   1,
+			LastCheckedAt: now,
+			NextCheckAt:   now.Add(time.Hour),
+		})
+	}
+	if len(excluded) == 0 {
+		return nil
+	}
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "group_id"}, {Name: "channel_id"}, {Name: "model_name"}},
+		DoUpdates: clause.AssignmentColumns([]string{"reason", "failed_count", "last_checked_at", "next_check_at"}),
+	}).Create(&excluded).Error
+}
 func normalizePositive(value, fallback int) int {
 	if value <= 0 {
 		return fallback
@@ -260,14 +326,20 @@ func GroupDel(id int, ctx context.Context) error {
 }
 
 func GroupItemAdd(item *model.GroupItem, ctx context.Context) error {
+	if item == nil {
+		return fmt.Errorf("group item is nil")
+	}
 	if _, ok := groupCache.Get(item.GroupID); !ok {
 		return fmt.Errorf("group not found")
 	}
-
-	if err := db.GetDB().WithContext(ctx).Create(item).Error; err != nil {
+	if err := db.GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := addGroupItemsTx(tx, item.GroupID, []model.GroupIDAndLLMName{{ChannelID: item.ChannelID, ModelName: item.ModelName}}); err != nil {
+			return err
+		}
+		return tx.Where("group_id = ? AND channel_id = ? AND model_name = ?", item.GroupID, item.ChannelID, item.ModelName).First(item).Error
+	}); err != nil {
 		return err
 	}
-
 	return groupRefreshCacheByID(item.GroupID, ctx)
 }
 
@@ -275,10 +347,24 @@ func GroupItemBatchAdd(groupID int, items []model.GroupIDAndLLMName, ctx context
 	if len(items) == 0 {
 		return nil
 	}
-
-	group, ok := groupCache.Get(groupID)
-	if !ok {
+	if _, ok := groupCache.Get(groupID); !ok {
 		return fmt.Errorf("group not found")
+	}
+	if err := db.GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return addGroupItemsTx(tx, groupID, items)
+	}); err != nil {
+		return err
+	}
+	return groupRefreshCacheByID(groupID, ctx)
+}
+
+func addGroupItemsTx(tx *gorm.DB, groupID int, items []model.GroupIDAndLLMName) error {
+	if len(items) == 0 {
+		return nil
+	}
+	var existingItems []model.GroupItem
+	if err := tx.Where("group_id = ?", groupID).Find(&existingItems).Error; err != nil {
+		return err
 	}
 
 	seen := make(map[string]struct{}, len(items))
@@ -299,7 +385,7 @@ func GroupItemBatchAdd(groupID int, items []model.GroupIDAndLLMName, ctx context
 	}
 
 	nextPriority := 1
-	for _, gi := range group.Items {
+	for _, gi := range existingItems {
 		if gi.Priority >= nextPriority {
 			nextPriority = gi.Priority + 1
 		}
@@ -318,18 +404,29 @@ func GroupItemBatchAdd(groupID int, items []model.GroupIDAndLLMName, ctx context
 		nextPriority++
 	}
 
-	if err := db.GetDB().WithContext(ctx).
-		Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "group_id"}, {Name: "channel_id"}, {Name: "model_name"}},
-			DoNothing: true,
-		}).
-		Create(&newItems).Error; err != nil {
-		return fmt.Errorf("failed to create group items: %w", err)
+	if err := tx.Where("group_id = ? AND (channel_id, model_name) IN ?", groupID, groupIDAndLLMNameConditions(uniq)).Delete(&model.GroupAutoExcludedItem{}).Error; err != nil {
+		return err
 	}
 
-	return groupRefreshCacheByID(groupID, ctx)
+	if err := tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "group_id"}, {Name: "channel_id"}, {Name: "model_name"}},
+		DoNothing: true,
+	}).Create(&newItems).Error; err != nil {
+		return fmt.Errorf("failed to create group items: %w", err)
+	}
+	return nil
 }
 
+func groupIDAndLLMNameConditions(items []model.GroupIDAndLLMName) [][]interface{} {
+	conditions := make([][]interface{}, 0, len(items))
+	for _, item := range items {
+		if item.ChannelID == 0 || item.ModelName == "" {
+			continue
+		}
+		conditions = append(conditions, []interface{}{item.ChannelID, item.ModelName})
+	}
+	return conditions
+}
 func GroupItemUpdate(item *model.GroupItem, ctx context.Context) error {
 	if err := db.GetDB().WithContext(ctx).Model(item).
 		Select("ModelName", "Priority", "Weight", "RetryCount").
@@ -360,9 +457,12 @@ func GroupItemBatchDel(groupID int, itemIDs []int, ctx context.Context) error {
 	if _, ok := groupCache.Get(groupID); !ok {
 		return fmt.Errorf("group not found")
 	}
-	if err := db.GetDB().WithContext(ctx).
-		Where("id IN ? AND group_id = ?", itemIDs, groupID).
-		Delete(&model.GroupItem{}).Error; err != nil {
+	if err := db.GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := markAutoExcludedItemsTx(tx, groupID, itemIDs, "auto_check_failed"); err != nil {
+			return err
+		}
+		return tx.Where("id IN ? AND group_id = ?", itemIDs, groupID).Delete(&model.GroupItem{}).Error
+	}); err != nil {
 		return fmt.Errorf("failed to delete group items: %w", err)
 	}
 	return groupRefreshCacheByID(groupID, ctx)
@@ -405,6 +505,134 @@ func GroupItemBatchDelByChannelAndModels(keys []model.GroupIDAndLLMName, ctx con
 	return nil
 }
 
+func GroupAutoExcludedItemGet(ctx context.Context, id int) (model.GroupAutoExcludedItem, error) {
+	var item model.GroupAutoExcludedItem
+	if err := db.GetDB().WithContext(ctx).First(&item, id).Error; err != nil {
+		return model.GroupAutoExcludedItem{}, fmt.Errorf("group excluded item not found")
+	}
+	return item, nil
+}
+
+func GroupAutoExcludedItemRestore(ctx context.Context, id int) error {
+	item, err := GroupAutoExcludedItemGet(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := db.GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id = ?", item.ID).Delete(&model.GroupAutoExcludedItem{}).Error; err != nil {
+			return err
+		}
+		return addGroupItemsTx(tx, item.GroupID, []model.GroupIDAndLLMName{{ChannelID: item.ChannelID, ModelName: item.ModelName}})
+	}); err != nil {
+		return err
+	}
+	return groupRefreshCacheByID(item.GroupID, ctx)
+}
+
+func GroupAutoExcludedItemSaveCheckResult(ctx context.Context, item model.GroupAutoExcludedItem, ok bool, message string) error {
+	if len(message) > 500 {
+		message = message[:500]
+	}
+	now := time.Now()
+	updates := map[string]interface{}{
+		"last_check_ok":      ok,
+		"last_check_message": message,
+		"last_checked_at":    now,
+	}
+	if !ok {
+		failedCount := item.FailedCount + 1
+		if failedCount <= 0 {
+			failedCount = 1
+		}
+		cooldown := time.Duration(failedCount) * time.Hour
+		if cooldown > 24*time.Hour {
+			cooldown = 24 * time.Hour
+		}
+		updates["failed_count"] = failedCount
+		updates["next_check_at"] = now.Add(cooldown)
+	}
+	if err := db.GetDB().WithContext(ctx).Model(&model.GroupAutoExcludedItem{}).Where("id = ?", item.ID).Updates(updates).Error; err != nil {
+		return err
+	}
+	return groupRefreshCacheByID(item.GroupID, ctx)
+}
+func GroupAutoExcludedItemsDue(ctx context.Context, now time.Time, limit int) ([]model.GroupAutoExcludedItem, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	var items []model.GroupAutoExcludedItem
+	if err := db.GetDB().WithContext(ctx).
+		Where("next_check_at IS NULL OR next_check_at = ? OR next_check_at <= ?", time.Time{}, now).
+		Order("next_check_at ASC, id ASC").
+		Limit(limit).
+		Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func GroupAutoExcludedItemRecordCheck(ctx context.Context, item model.GroupAutoExcludedItem, ok bool, message string) error {
+	if len(message) > 500 {
+		message = message[:500]
+	}
+	if ok {
+		return db.GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("id = ?", item.ID).Delete(&model.GroupAutoExcludedItem{}).Error; err != nil {
+				return err
+			}
+			return addGroupItemsTx(tx, item.GroupID, []model.GroupIDAndLLMName{{ChannelID: item.ChannelID, ModelName: item.ModelName}})
+		})
+	}
+	now := time.Now()
+	failedCount := item.FailedCount + 1
+	if failedCount <= 0 {
+		failedCount = 1
+	}
+	cooldown := time.Duration(failedCount) * time.Hour
+	if cooldown > 24*time.Hour {
+		cooldown = 24 * time.Hour
+	}
+	okValue := false
+	return db.GetDB().WithContext(ctx).Model(&model.GroupAutoExcludedItem{}).Where("id = ?", item.ID).Updates(map[string]interface{}{
+		"last_check_ok":      okValue,
+		"last_check_message": message,
+		"failed_count":       failedCount,
+		"last_checked_at":    now,
+		"next_check_at":      now.Add(cooldown),
+	}).Error
+}
+func GroupAutoExcludedItemKeys(groupID int, ctx context.Context) (map[string]struct{}, error) {
+	var items []model.GroupAutoExcludedItem
+	if err := db.GetDB().WithContext(ctx).Where("group_id = ?", groupID).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	keys := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		keys[fmt.Sprintf("%d|%s", item.ChannelID, item.ModelName)] = struct{}{}
+	}
+	return keys, nil
+}
+
+func GroupItemSaveCheckResult(ctx context.Context, itemID int, ok bool, message string) error {
+	var item model.GroupItem
+	if err := db.GetDB().WithContext(ctx).First(&item, itemID).Error; err != nil {
+		return fmt.Errorf("group item not found")
+	}
+	if len(message) > 500 {
+		message = message[:500]
+	}
+	updates := map[string]interface{}{
+		"last_check_ok":      ok,
+		"last_check_message": message,
+	}
+	if !ok {
+		updates["auto_excluded"] = true
+	}
+	if err := db.GetDB().WithContext(ctx).Model(&model.GroupItem{}).Where("id = ?", itemID).Updates(updates).Error; err != nil {
+		return err
+	}
+	return groupRefreshCacheByID(item.GroupID, ctx)
+}
 func GroupItemList(groupID int, ctx context.Context) ([]model.GroupItem, error) {
 	var items []model.GroupItem
 	if err := db.GetDB().WithContext(ctx).
@@ -420,6 +648,7 @@ func groupRefreshCache(ctx context.Context) error {
 	groups := []model.Group{}
 	if err := db.GetDB().WithContext(ctx).
 		Preload("Items").
+		Preload("ExcludedItems").
 		Find(&groups).Error; err != nil {
 		return err
 	}
@@ -433,6 +662,7 @@ func groupRefreshCacheByID(id int, ctx context.Context) error {
 	var group model.Group
 	if err := db.GetDB().WithContext(ctx).
 		Preload("Items").
+		Preload("ExcludedItems").
 		First(&group, id).Error; err != nil {
 		return err
 	}
@@ -447,6 +677,7 @@ func groupRefreshCacheByIDs(ids []int, ctx context.Context) error {
 	var groups []model.Group
 	if err := db.GetDB().WithContext(ctx).
 		Preload("Items").
+		Preload("ExcludedItems").
 		Where("id IN ?", ids).
 		Find(&groups).Error; err != nil {
 		return err

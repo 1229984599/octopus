@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -38,6 +39,14 @@ func init() {
 		AddRoute(
 			router.NewRoute("/check-item", http.MethodPost).
 				Handle(checkGroupItem),
+		).
+		AddRoute(
+			router.NewRoute("/check-excluded-item", http.MethodPost).
+				Handle(checkGroupExcludedItem),
+		).
+		AddRoute(
+			router.NewRoute("/restore-excluded-item", http.MethodPost).
+				Handle(restoreGroupExcludedItem),
 		)
 	// AddRoute(
 	// 	router.NewRoute("/auto-add-item", http.MethodPost).
@@ -160,7 +169,12 @@ func checkGroupItem(c *gin.Context) {
 		resp.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if channelKeyCheckAnyOK(results) && !channel.Enabled {
+	ok := channelKeyCheckAnyOK(results)
+	if err := op.GroupItemSaveCheckResult(ctx, item.ID, ok, groupItemCheckResultMessage(results)); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if ok && !channel.Enabled {
 		if err := op.ChannelEnabled(channel.ID, true, ctx); err != nil {
 			resp.Error(c, http.StatusInternalServerError, err.Error())
 			return
@@ -173,6 +187,67 @@ func checkGroupItem(c *gin.Context) {
 	resp.Success(c, results)
 }
 
+func checkGroupExcludedItem(c *gin.Context) {
+	var request struct {
+		ExcludedItemID int                   `json:"excluded_item_id" binding:"required"`
+		Mode           string                `json:"mode,omitempty"`
+		Capability     model.GroupCapability `json:"capability,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	ctx := c.Request.Context()
+	excluded, err := op.GroupAutoExcludedItemGet(ctx, request.ExcludedItemID)
+	if err != nil {
+		resp.Error(c, http.StatusNotFound, err.Error())
+		return
+	}
+	group, err := op.GroupGet(excluded.GroupID, ctx)
+	if err != nil {
+		resp.Error(c, http.StatusNotFound, err.Error())
+		return
+	}
+	channel, err := op.ChannelGet(excluded.ChannelID, ctx)
+	if err != nil {
+		resp.Error(c, http.StatusNotFound, err.Error())
+		return
+	}
+	checkChannel := activeCheckChannel(*channel)
+	capability := group.Capability
+	if request.Capability != "" {
+		capability = request.Capability
+	}
+	results := helper.CheckChannelKeysWithOptions(ctx, checkChannel, excluded.ModelName, nil, helper.CheckOptions{
+		Mode:       helper.CheckMode(request.Mode),
+		Capability: capability,
+	})
+	if err := op.ChannelKeySaveDBByIDs(ctx, channelKeyCheckResultIDs(results)); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ok := channelKeyCheckAnyOK(results)
+	if err := op.GroupAutoExcludedItemSaveCheckResult(ctx, excluded, ok, groupItemCheckResultMessage(results)); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, results)
+}
+
+func restoreGroupExcludedItem(c *gin.Context) {
+	var request struct {
+		ExcludedItemID int `json:"excluded_item_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := op.GroupAutoExcludedItemRestore(c.Request.Context(), request.ExcludedItemID); err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, nil)
+}
 func activeCheckChannel(channel model.Channel) model.Channel {
 	keys := make([]model.ChannelKey, 0, len(channel.Keys))
 	for _, key := range channel.Keys {
@@ -204,3 +279,16 @@ func activeCheckChannel(channel model.Channel) model.Channel {
 // 	}
 // 	resp.Success(c, nil)
 // }
+
+func groupItemCheckResultMessage(results []helper.ChannelKeyCheckResult) string {
+	if len(results) == 0 {
+		return "没有返回检测结果"
+	}
+	okCount := 0
+	for _, result := range results {
+		if result.OK {
+			okCount++
+		}
+	}
+	return fmt.Sprintf("正常 %d / 异常 %d / 总计 %d", okCount, len(results)-okCount, len(results))
+}

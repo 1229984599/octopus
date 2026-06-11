@@ -1,6 +1,9 @@
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 type GroupMode int
 type GroupCapability string
@@ -24,15 +27,17 @@ const (
 )
 
 type Group struct {
-	ID                int             `json:"id" gorm:"primaryKey"`
-	Name              string          `json:"name" gorm:"unique;not null"`
-	Mode              GroupMode       `json:"mode" gorm:"not null"`
-	Capability        GroupCapability `json:"capability" gorm:"default:auto"`
-	MatchRegex        string          `json:"match_regex"`
-	FirstTokenTimeOut int             `json:"first_token_time_out"` // 单个渠道首个Token响应超时时间(秒)
-	SessionKeepTime   int             `json:"session_keep_time"`    // 会话保持时间(秒) 0 为禁用
-	AutoCheck         bool            `json:"auto_check" gorm:"default:true"`
-	Items             []GroupItem     `json:"items,omitempty" gorm:"foreignKey:GroupID"`
+	ID                int                     `json:"id" gorm:"primaryKey"`
+	Name              string                  `json:"name" gorm:"unique;not null"`
+	SortOrder         int                     `json:"sort_order" gorm:"default:0;index"`
+	Mode              GroupMode               `json:"mode" gorm:"not null"`
+	Capability        GroupCapability         `json:"capability" gorm:"default:auto"`
+	MatchRegex        string                  `json:"match_regex"`
+	FirstTokenTimeOut int                     `json:"first_token_time_out"` // 单个渠道首个Token响应超时时间(秒)
+	SessionKeepTime   int                     `json:"session_keep_time"`    // 会话保持时间(秒) 0 为禁用
+	AutoCheck         bool                    `json:"auto_check" gorm:"default:true"`
+	Items             []GroupItem             `json:"items,omitempty" gorm:"foreignKey:GroupID"`
+	ExcludedItems     []GroupAutoExcludedItem `json:"excluded_items,omitempty" gorm:"foreignKey:GroupID"`
 }
 
 func (g *Group) UnmarshalJSON(data []byte) error {
@@ -57,19 +62,23 @@ func (g *Group) UnmarshalJSON(data []byte) error {
 }
 
 type GroupItem struct {
-	ID         int    `json:"id" gorm:"primaryKey"`
-	GroupID    int    `json:"group_id" gorm:"not null;index:idx_group_channel_model,unique"` // 创建时不携带此字段,更新时需要
-	ChannelID  int    `json:"channel_id" gorm:"not null;index:idx_group_channel_model,unique"`
-	ModelName  string `json:"model_name" gorm:"not null;index:idx_group_channel_model,unique"`
-	Priority   int    `json:"priority"`
-	Weight     int    `json:"weight" gorm:"default:1"`
-	RetryCount int    `json:"retry_count" gorm:"default:0"`
+	ID               int    `json:"id" gorm:"primaryKey"`
+	GroupID          int    `json:"group_id" gorm:"not null;index:idx_group_channel_model,unique"` // 创建时不携带此字段,更新时需要
+	ChannelID        int    `json:"channel_id" gorm:"not null;index:idx_group_channel_model,unique"`
+	ModelName        string `json:"model_name" gorm:"not null;index:idx_group_channel_model,unique"`
+	Priority         int    `json:"priority"`
+	Weight           int    `json:"weight" gorm:"default:1"`
+	RetryCount       int    `json:"retry_count" gorm:"default:0"`
+	LastCheckOK      *bool  `json:"last_check_ok,omitempty"`
+	LastCheckMessage string `json:"last_check_message,omitempty"`
+	AutoExcluded     bool   `json:"auto_excluded" gorm:"default:false;index:idx_group_auto_excluded"`
 }
 
 // GroupUpdateRequest 分组更新请求 - 仅包含变更的数据
 type GroupUpdateRequest struct {
 	ID                int                      `json:"id" binding:"required"`
-	Name              *string                  `json:"name,omitempty"`                 // 仅在名称变更时发送
+	Name              *string                  `json:"name,omitempty"`
+	SortOrder         *int                     `json:"sort_order,omitempty"`           // 自定义排序
 	Mode              *GroupMode               `json:"mode,omitempty"`                 // 仅在模式变更时发送
 	Capability        *GroupCapability         `json:"capability,omitempty"`           // 请求/模型能力类型
 	MatchRegex        *string                  `json:"match_regex,omitempty"`          // 仅在匹配正则变更时发送
@@ -100,4 +109,17 @@ type GroupItemUpdateRequest struct {
 type GroupIDAndLLMName struct {
 	ChannelID int
 	ModelName string
+}
+
+type GroupAutoExcludedItem struct {
+	ID               int       `json:"id" gorm:"primaryKey"`
+	GroupID          int       `json:"group_id" gorm:"not null;uniqueIndex:idx_group_auto_excluded_key;index"`
+	ChannelID        int       `json:"channel_id" gorm:"not null;uniqueIndex:idx_group_auto_excluded_key"`
+	ModelName        string    `json:"model_name" gorm:"not null;uniqueIndex:idx_group_auto_excluded_key"`
+	Reason           string    `json:"reason"`
+	LastCheckOK      *bool     `json:"last_check_ok,omitempty"`
+	LastCheckMessage string    `json:"last_check_message,omitempty"`
+	FailedCount      int       `json:"failed_count" gorm:"default:0"`
+	LastCheckedAt    time.Time `json:"last_checked_at,omitempty"`
+	NextCheckAt      time.Time `json:"next_check_at,omitempty" gorm:"index"`
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
-import { Check, ChevronDownIcon, Plus, RefreshCw, Search, Sparkles, Trash2 } from 'lucide-react';
+import { Check, ChevronDownIcon, Plus, RefreshCw, RotateCcw, Search, Sparkles, Trash2 } from 'lucide-react';
 import { useTranslations } from '@/lib/translations';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import { useModelChannelList, type LLMChannel } from '@/api/endpoints/model';
@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Accordion, AccordionContent, AccordionItem } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
 import { getModelIcon } from '@/lib/model-icons';
-import { GroupCapability, useCheckGroupItem, type GroupMode } from '@/api/endpoints/group';
+import { GroupCapability, useCheckGroupExcludedItem, useCheckGroupItem, useRestoreGroupExcludedItem, type GroupExcludedItem, type GroupMode } from '@/api/endpoints/group';
 import type { MemberCheckState, SelectedMember } from './ItemList';
 import { MemberList } from './ItemList';
 import { matchesGroupName, memberKey, normalizeKey, MODE_LABELS } from './utils';
@@ -32,6 +32,7 @@ export type GroupEditorValues = {
     session_keep_time: number;
     auto_check: boolean;
     members: SelectedMember[];
+    excludedItems: GroupExcludedItem[];
 };
 
 const GROUP_CHECK_CONCURRENCY = 6;
@@ -320,6 +321,129 @@ function SortSection({
     );
 }
 
+function ExcludedSection({
+    items,
+    channelNames,
+    checkingAll,
+    checkingId,
+    restoringId,
+    onCheckAll,
+    onCheck,
+    onRestore,
+    onOpenChannel,
+}: {
+    items: GroupExcludedItem[];
+    channelNames: Map<number, string>;
+    checkingAll: boolean;
+    checkingId: number | null;
+    restoringId: number | null;
+    onCheckAll: () => void;
+    onCheck: (item: GroupExcludedItem) => void;
+    onRestore: (item: GroupExcludedItem) => void;
+    onOpenChannel: (channelId: number) => void;
+}) {
+    const t = useTranslations('group');
+
+    return (
+        <div className="flex max-h-48 flex-col rounded-xl border border-border/50 bg-muted/30">
+            <div className="flex items-center justify-between gap-2 border-b border-border/30 bg-muted/50 px-3 py-2">
+                <span className="text-sm font-medium text-foreground">
+                    {t('form.excludedItems')}
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">({items.length})</span>
+                </span>
+                <button
+                    type="button"
+                    onClick={onCheckAll}
+                    disabled={checkingAll || items.length === 0}
+                    className={cn(
+                        'flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors',
+                        checkingAll || items.length === 0
+                            ? 'cursor-not-allowed text-muted-foreground/50'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    )}
+                    title={t('form.checkAll')}
+                >
+                    <RefreshCw className={cn('size-3.5', checkingAll && 'animate-spin')} />
+                    <span>{t('form.checkAll')}</span>
+                </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+                {items.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-border/60 bg-background/60 px-3 py-4 text-center text-xs text-muted-foreground">
+                        {t('form.noExcludedItems')}
+                    </div>
+                )}
+                <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
+                    {items.map((item) => {
+                        const { Avatar } = getModelIcon(item.model_name);
+                        const channelName = channelNames.get(item.channel_id) ?? `Channel ${item.channel_id}`;
+                        const checking = checkingId === item.id;
+                        const restoring = restoringId === item.id;
+                        return (
+                            <div key={item.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-background px-2.5 py-2">
+                                <Avatar size={18} />
+                                <div className="min-w-0 flex-1">
+                                    <Tooltip side="top" sideOffset={10} align="start">
+                                        <TooltipTrigger className="block max-w-full truncate text-left text-sm font-medium leading-tight">
+                                            {item.model_name}
+                                        </TooltipTrigger>
+                                        <TooltipContent>{item.model_name}</TooltipContent>
+                                    </Tooltip>
+                                    <button
+                                        type="button"
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            onOpenChannel(item.channel_id);
+                                        }}
+                                        className="max-w-full truncate text-left text-[10px] leading-tight text-muted-foreground transition-colors hover:text-primary"
+                                        title={t('form.openChannel')}
+                                    >
+                                        {channelName}
+                                    </button>
+                                </div>
+                                {item.failed_count !== undefined && item.failed_count > 0 && (
+                                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                        {item.failed_count}
+                                    </span>
+                                )}
+                                {item.last_check_ok !== undefined && (
+                                    <span
+                                        className={cn(
+                                            'shrink-0 rounded px-1.5 py-0.5 text-[10px]',
+                                            item.last_check_ok ? 'bg-primary/10 text-primary' : 'bg-destructive/10 text-destructive'
+                                        )}
+                                        title={item.last_check_message}
+                                    >
+                                        {item.last_check_ok ? t('form.checkOk') : t('form.checkBad')}
+                                    </span>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => onCheck(item)}
+                                    disabled={checking || restoring}
+                                    className="shrink-0 rounded p-1 transition-colors hover:bg-muted disabled:opacity-50"
+                                    title={t('form.checkItem')}
+                                >
+                                    <RefreshCw className={cn('size-3.5', checking && 'animate-spin')} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onRestore(item)}
+                                    disabled={checking || restoring}
+                                    className="shrink-0 rounded p-1 transition-colors hover:bg-muted disabled:opacity-50"
+                                    title={t('form.restoreExcluded')}
+                                >
+                                    <RotateCcw className={cn('size-3.5', restoring && 'animate-spin')} />
+                                </button>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export function GroupEditor({
     groupId,
     initial,
@@ -342,6 +466,8 @@ export function GroupEditor({
     const t = useTranslations('group');
     const { data: modelChannels = [] } = useModelChannelList();
     const checkGroupItem = useCheckGroupItem();
+    const checkGroupExcludedItem = useCheckGroupExcludedItem();
+    const restoreGroupExcludedItem = useRestoreGroupExcludedItem();
 
     const [groupName, setGroupName] = useState(initial?.name ?? '');
     const [matchRegex, setMatchRegex] = useState(initial?.match_regex ?? '');
@@ -351,13 +477,26 @@ export function GroupEditor({
     const [sessionKeepTime, setSessionKeepTime] = useState<number>(initial?.session_keep_time ?? 0);
     const [autoCheck, setAutoCheck] = useState<boolean>(initial?.auto_check ?? true);
     const [selectedMembers, setSelectedMembers] = useState<SelectedMember[]>(initial?.members ?? []);
+    const [excludedItems, setExcludedItems] = useState<GroupExcludedItem[]>(initial?.excludedItems ?? []);
     const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
     const [checkingMemberId, setCheckingMemberId] = useState<string | null>(null);
     const [checkingAll, setCheckingAll] = useState(false);
     const [checkResults, setCheckResults] = useState<Record<string, MemberCheckState>>({});
+    const [checkingExcludedId, setCheckingExcludedId] = useState<number | null>(null);
+    const [checkingAllExcluded, setCheckingAllExcluded] = useState(false);
+    const [restoringExcludedId, setRestoringExcludedId] = useState<number | null>(null);
 
     const groupKey = normalizeKey(groupName);
     const regexKey = matchRegex.trim();
+
+    const channelNames = useMemo(() => {
+        const names = new Map<number, string>();
+        modelChannels.forEach((mc) => {
+            if (!names.has(mc.channel_id)) names.set(mc.channel_id, mc.channel_name);
+        });
+        selectedMembers.forEach((member) => names.set(member.channel_id, member.channel_name));
+        return names;
+    }, [modelChannels, selectedMembers]);
 
     const { matchedModelChannels, regexError } = useMemo(() => {
         const parseRegex = (input: string): RegExp => {
@@ -555,6 +694,98 @@ export function GroupEditor({
         });
     }, [selectedMembers]);
 
+    const runExcludedCheck = useCallback(async (item: GroupExcludedItem) => {
+        const results = await checkGroupExcludedItem.mutateAsync({
+            excluded_item_id: item.id,
+            capability,
+        });
+        const okCount = results.filter((result) => result.ok).length;
+        const ok = okCount > 0;
+        const message = results.length > 0 ? `${okCount}/${results.length}` : t('form.checkNoResult');
+        setExcludedItems((prev) => prev.map((excluded) => excluded.id === item.id ? {
+            ...excluded,
+            last_check_ok: ok,
+            last_check_message: message,
+            failed_count: ok ? excluded.failed_count : (excluded.failed_count ?? 0) + 1,
+            last_checked_at: new Date().toISOString(),
+        } : excluded));
+        return ok;
+    }, [capability, checkGroupExcludedItem, t]);
+
+    const handleCheckExcludedItem = useCallback(async (item: GroupExcludedItem) => {
+        setCheckingExcludedId(item.id);
+        try {
+            const ok = await runExcludedCheck(item);
+            toast.success(ok ? t('toast.checkDone') : t('toast.checkFailed'));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            toast.error(t('toast.checkFailed'), { description: message });
+        } finally {
+            setCheckingExcludedId(null);
+        }
+    }, [runExcludedCheck, t]);
+
+    const handleCheckAllExcludedItems = useCallback(async () => {
+        if (excludedItems.length === 0) return;
+        setCheckingAllExcluded(true);
+        try {
+            let cursor = 0;
+            let okCount = 0;
+            const workerCount = Math.min(GROUP_CHECK_CONCURRENCY, excludedItems.length);
+            await Promise.all(Array.from({ length: workerCount }, async () => {
+                while (cursor < excludedItems.length) {
+                    const item = excludedItems[cursor++];
+                    if (!item) continue;
+                    setCheckingExcludedId(item.id);
+                    try {
+                        if (await runExcludedCheck(item)) okCount += 1;
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        setExcludedItems((prev) => prev.map((excluded) => excluded.id === item.id ? {
+                            ...excluded,
+                            last_check_ok: false,
+                            last_check_message: message,
+                            failed_count: (excluded.failed_count ?? 0) + 1,
+                            last_checked_at: new Date().toISOString(),
+                        } : excluded));
+                    }
+                }
+            }));
+            toast.success(t('toast.checkDone'), { description: `${okCount}/${excludedItems.length}` });
+        } finally {
+            setCheckingExcludedId(null);
+            setCheckingAllExcluded(false);
+        }
+    }, [excludedItems, runExcludedCheck, t]);
+
+    const handleRestoreExcludedItem = useCallback(async (item: GroupExcludedItem) => {
+        setRestoringExcludedId(item.id);
+        try {
+            await restoreGroupExcludedItem.mutateAsync(item.id);
+            setExcludedItems((prev) => prev.filter((excluded) => excluded.id !== item.id));
+            const channelName = channelNames.get(item.channel_id) ?? `Channel ${item.channel_id}`;
+            setSelectedMembers((prev) => {
+                const id = memberKey({ channel_id: item.channel_id, name: item.model_name } as LLMChannel);
+                if (prev.some((member) => member.id === id)) return prev;
+                return [...prev, {
+                    id,
+                    name: item.model_name,
+                    channel_id: item.channel_id,
+                    channel_name: channelName,
+                    enabled: true,
+                    weight: 1,
+                    retry_count: 0,
+                } as SelectedMember];
+            });
+            toast.success(t('toast.restoreDone'));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            toast.error(t('toast.restoreFailed'), { description: message });
+        } finally {
+            setRestoringExcludedId(null);
+        }
+    }, [channelNames, restoreGroupExcludedItem, t]);
+
     const isValid = groupKey.length > 0 && selectedMembers.length > 0 && !regexError;
 
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -569,6 +800,7 @@ export function GroupEditor({
             session_keep_time: sessionKeepTime,
             auto_check: autoCheck,
             members: selectedMembers,
+            excludedItems,
         });
     };
 
@@ -726,8 +958,8 @@ export function GroupEditor({
                         </label>
                     </div>
 
-                    <div className="min-h-0 md:flex-1">
-                        <div className="grid min-h-0 grid-cols-1 gap-4 md:h-full md:grid-cols-2">
+                    <div className="flex min-h-0 flex-col gap-4 md:flex-1">
+                        <div className="grid min-h-0 grid-cols-1 gap-4 md:flex-1 md:grid-cols-2">
                             <ModelPickerSection
                                 modelChannels={modelChannels}
                                 selectedMembers={selectedMembers}
@@ -752,6 +984,19 @@ export function GroupEditor({
                                 removingIds={removingIds}
                                 showWeight={mode === 4}
                                 onClear={handleClearMembers}
+                            />
+                        </div>
+                        <div className="shrink-0">
+                            <ExcludedSection
+                                items={excludedItems}
+                                channelNames={channelNames}
+                                checkingAll={checkingAllExcluded}
+                                checkingId={checkingExcludedId}
+                                restoringId={restoringExcludedId}
+                                onCheckAll={handleCheckAllExcludedItems}
+                                onCheck={handleCheckExcludedItem}
+                                onRestore={handleRestoreExcludedItem}
+                                onOpenChannel={openChannelEditor}
                             />
                         </div>
                     </div>

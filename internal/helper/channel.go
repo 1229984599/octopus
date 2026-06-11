@@ -3,6 +3,7 @@ package helper
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -56,6 +57,59 @@ func ChannelBaseUrlDelayUpdate(channel *model.Channel, ctx context.Context) {
 	}
 }
 
+func matchAutoGroupModels(autoGroup model.AutoGroupType, group model.Group, channelID int, channelModelNames []string, excludedKeys map[string]struct{}) []string {
+	matchedModelNames := make([]string, 0, len(channelModelNames))
+	appendIfAllowed := func(modelName string) {
+		if _, excluded := excludedKeys[fmt.Sprintf("%d|%s", channelID, modelName)]; excluded {
+			return
+		}
+		matchedModelNames = append(matchedModelNames, modelName)
+	}
+
+	switch autoGroup {
+	case model.AutoGroupTypeExact:
+		for _, modelName := range channelModelNames {
+			if strings.EqualFold(modelName, group.Name) {
+				appendIfAllowed(modelName)
+			}
+		}
+	case model.AutoGroupTypeFuzzy:
+		groupNameLower := strings.ToLower(strings.TrimSpace(group.Name))
+		if groupNameLower == "" {
+			return matchedModelNames
+		}
+		for _, modelName := range channelModelNames {
+			if strings.Contains(strings.ToLower(modelName), groupNameLower) {
+				appendIfAllowed(modelName)
+			}
+		}
+	case model.AutoGroupTypeRegex:
+		if group.MatchRegex == "" {
+			for _, modelName := range channelModelNames {
+				if strings.EqualFold(modelName, group.Name) {
+					appendIfAllowed(modelName)
+				}
+			}
+			return matchedModelNames
+		}
+		re, err := regexp2.Compile(group.MatchRegex, regexp2.ECMAScript)
+		if err != nil {
+			log.Warnf("compile regex failed (channel=%d group=%d regex=%q): %v", channelID, group.ID, group.MatchRegex, err)
+			return matchedModelNames
+		}
+		for _, modelName := range channelModelNames {
+			matched, err := re.MatchString(modelName)
+			if err != nil {
+				log.Warnf("match regex failed (channel=%d group=%d regex=%q model=%q): %v", channelID, group.ID, group.MatchRegex, modelName, err)
+				continue
+			}
+			if matched {
+				appendIfAllowed(modelName)
+			}
+		}
+	}
+	return matchedModelNames
+}
 func ChannelAutoGroup(channel *model.Channel, ctx context.Context) {
 	if channel == nil {
 		return
@@ -75,65 +129,25 @@ func ChannelAutoGroup(channel *model.Channel, ctx context.Context) {
 	}
 
 	for _, group := range groups {
-		matchedModelNames := make([]string, 0, len(channelModelNames))
-
-		switch channel.AutoGroup {
-		case model.AutoGroupTypeExact:
-			for _, modelName := range channelModelNames {
-				if strings.EqualFold(modelName, group.Name) {
-					matchedModelNames = append(matchedModelNames, modelName)
-				}
-			}
-
-		case model.AutoGroupTypeFuzzy:
-			groupNameLower := strings.ToLower(strings.TrimSpace(group.Name))
-			if groupNameLower == "" {
-				continue
-			}
-			for _, modelName := range channelModelNames {
-				if strings.Contains(strings.ToLower(modelName), groupNameLower) {
-					matchedModelNames = append(matchedModelNames, modelName)
-				}
-			}
-
-		case model.AutoGroupTypeRegex:
-			if group.MatchRegex == "" {
-				for _, modelName := range channelModelNames {
-					if strings.EqualFold(modelName, group.Name) {
-						matchedModelNames = append(matchedModelNames, modelName)
-					}
-				}
-				break
-			}
-
-			re, err := regexp2.Compile(group.MatchRegex, regexp2.ECMAScript)
-			if err != nil {
-				log.Warnf("compile regex failed (channel=%d group=%d regex=%q): %v", channel.ID, group.ID, group.MatchRegex, err)
-				continue
-			}
-			for _, modelName := range channelModelNames {
-				matched, err := re.MatchString(modelName)
-				if err != nil {
-					log.Warnf("match regex failed (channel=%d group=%d regex=%q model=%q): %v", channel.ID, group.ID, group.MatchRegex, modelName, err)
-					continue
-				}
-				if matched {
-					matchedModelNames = append(matchedModelNames, modelName)
-				}
-			}
+		excludedKeys, err := op.GroupAutoExcludedItemKeys(group.ID, ctx)
+		if err != nil {
+			log.Warnf("get group auto excluded items failed (channel=%d group=%d): %v", channel.ID, group.ID, err)
+			continue
+		}
+		matchedModelNames := matchAutoGroupModels(channel.AutoGroup, group, channel.ID, channelModelNames, excludedKeys)
+		if len(matchedModelNames) == 0 {
+			continue
 		}
 
-		if len(matchedModelNames) > 0 {
-			items := make([]model.GroupIDAndLLMName, 0, len(matchedModelNames))
-			for _, modelName := range matchedModelNames {
-				items = append(items, model.GroupIDAndLLMName{
-					ChannelID: channel.ID,
-					ModelName: modelName,
-				})
-			}
-			if err := op.GroupItemBatchAdd(group.ID, items, ctx); err != nil {
-				log.Warnf("group item batch add failed (channel=%d group=%d): %v", channel.ID, group.ID, err)
-			}
+		items := make([]model.GroupIDAndLLMName, 0, len(matchedModelNames))
+		for _, modelName := range matchedModelNames {
+			items = append(items, model.GroupIDAndLLMName{
+				ChannelID: channel.ID,
+				ModelName: modelName,
+			})
+		}
+		if err := op.GroupItemBatchAdd(group.ID, items, ctx); err != nil {
+			log.Warnf("group item batch add failed (channel=%d group=%d): %v", channel.ID, group.ID, err)
 		}
 	}
 }
