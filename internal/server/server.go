@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 
 	"github.com/1229984599/octopus/internal/conf"
@@ -42,8 +43,12 @@ func Start() error {
 
 	httpSrv.Addr = fmt.Sprintf("%s:%d", conf.AppConfig.Server.Host, conf.AppConfig.Server.Port)
 	httpSrv.Handler = r
+	listener, err := net.Listen("tcp", httpSrv.Addr)
+	if err != nil {
+		return err
+	}
 	go func() {
-		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := httpSrv.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Errorf("http server listen and serve error: %v", err)
 		}
 	}()

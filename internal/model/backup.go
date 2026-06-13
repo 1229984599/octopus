@@ -21,7 +21,6 @@ type DBDump struct {
 	ProxyConfigurations []json.RawMessage `json:"proxy_configurations,omitempty"`
 	Groups              []Group           `json:"groups,omitempty"`
 	GroupItems          []GroupItem       `json:"group_items,omitempty"`
-	LLMInfos            []LLMInfo         `json:"llm_infos,omitempty"`
 	APIKeys             []APIKey          `json:"api_keys,omitempty"`
 	Settings            []Setting         `json:"settings,omitempty"`
 
@@ -35,6 +34,19 @@ type DBDump struct {
 	RelayLogs []RelayLog `json:"relay_logs,omitempty"`
 }
 
+type DBBackupSelection struct {
+	ChannelIDs  []int    `json:"channel_ids,omitempty"`
+	GroupIDs    []int    `json:"group_ids,omitempty"`
+	SettingKeys []string `json:"setting_keys,omitempty"`
+}
+
+type DBBackupSelectableItem struct {
+	ID        int    `json:"id"`
+	Key       string `json:"key,omitempty"`
+	Name      string `json:"name"`
+	SubCount  int    `json:"sub_count"`
+	Secondary string `json:"secondary,omitempty"`
+}
 type DBImportResult struct {
 	// RowsAffected contains the rows affected for each table operation (insert/upsert depending on table).
 	RowsAffected map[string]int64 `json:"rows_affected"`
@@ -48,11 +60,14 @@ type DBImportPreviewTable struct {
 }
 
 type DBImportPreview struct {
-	Version       int                    `json:"version"`
-	IncludeLogs   bool                   `json:"include_logs"`
-	IncludeStats  bool                   `json:"include_stats"`
-	Tables        []DBImportPreviewTable `json:"tables"`
-	Warnings      []string               `json:"warnings"`
-	TotalRows     int                    `json:"total_rows"`
-	SkippedTables []string               `json:"skipped_tables"`
+	Channels      []DBBackupSelectableItem `json:"channels,omitempty"`
+	Groups        []DBBackupSelectableItem `json:"groups,omitempty"`
+	Settings      []DBBackupSelectableItem `json:"settings,omitempty"`
+	Version       int                      `json:"version"`
+	IncludeLogs   bool                     `json:"include_logs"`
+	IncludeStats  bool                     `json:"include_stats"`
+	Tables        []DBImportPreviewTable   `json:"tables"`
+	Warnings      []string                 `json:"warnings"`
+	TotalRows     int                      `json:"total_rows"`
+	SkippedTables []string                 `json:"skipped_tables"`
 }

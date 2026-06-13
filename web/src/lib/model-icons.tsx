@@ -50,8 +50,7 @@ type ModelIconConfig = {
 };
 
 /**
- * Provider configurations with prefixes, Avatar components, and brand colors
- * Similar to Go's Provider array in internal/price/price.go
+ * Provider configurations with prefixes, Avatar components, and brand colors.
  */
 const MODEL_ICON_PATTERNS: ModelIconConfig[] = [
     // OpenAI - GPT series

@@ -20,9 +20,8 @@
 - ⚡ **智能优选** - 单渠道多端点，智能选择延迟最小的端点请求
 - ⚖️ **负载均衡** - 自动分配请求，确保服务稳定高效
 - 🔄 **协议互转** - 支持 OpenAI Chat / OpenAI Responses / Anthropic 三种 API 格式互相转换
-- 💰 **价格同步** - 自动更新模型价格
 - 🔃 **模型同步** - 自动与渠道同步可用模型列表，省心省力
-- 📊 **数据统计** - 全面的请求统计、Token 消耗、费用追踪
+- 📊 **数据统计** - 全面的请求统计、Token 消耗与耗时分析
 - 🎨 **优雅界面** - 简洁美观的 Web 管理面板
 - 🗄️ **多数据库支持** - 支持 SQLite、MySQL、PostgreSQL
 
@@ -216,12 +215,10 @@ http://localhost:3000
 <td><img src="web/public/screenshot/desktop-group.png" alt="分组" width="400"></td>
 </tr>
 <tr>
-<td align="center"><b>价格</b></td>
 <td align="center"><b>日志</b></td>
 <td align="center"><b>设置</b></td>
 </tr>
 <tr>
-<td><img src="web/public/screenshot/desktop-price.png" alt="价格" width="400"></td>
 <td><img src="web/public/screenshot/desktop-log.png" alt="日志" width="400"></td>
 <td><img src="web/public/screenshot/desktop-setting.png" alt="设置" width="400"></td>
 </tr>
@@ -236,7 +233,6 @@ http://localhost:3000
 <td align="center"><b>首页</b></td>
 <td align="center"><b>渠道</b></td>
 <td align="center"><b>分组</b></td>
-<td align="center"><b>价格</b></td>
 <td align="center"><b>日志</b></td>
 <td align="center"><b>设置</b></td>
 </tr>
@@ -244,7 +240,6 @@ http://localhost:3000
 <td><img src="web/public/screenshot/mobile-home.png" alt="移动端首页" width="140"></td>
 <td><img src="web/public/screenshot/mobile-channel.png" alt="移动端渠道" width="140"></td>
 <td><img src="web/public/screenshot/mobile-group.png" alt="移动端分组" width="140"></td>
-<td><img src="web/public/screenshot/mobile-price.png" alt="移动端价格" width="140"></td>
 <td><img src="web/public/screenshot/mobile-log.png" alt="移动端日志" width="140"></td>
 <td><img src="web/public/screenshot/mobile-setting.png" alt="移动端设置" width="140"></td>
 </tr>
@@ -308,27 +303,6 @@ http://localhost:3000
 - 检测失败时可查看详细异常说明；检测成功时也会自动启用对应渠道。
 
 > 💡 **示例**：创建分组名称为 `gpt-4o`，将多个供应商的 GPT-4o 渠道加入该分组，即可通过统一的 `model: gpt-4o` 访问所有渠道。
-
----
-
-### 💰 价格管理
-
-管理系统中的模型价格信息。
-
-**数据来源：**
-
-- 系统会定期从 [models.dev](https://github.com/sst/models.dev) 同步更新模型价格数据
-- 当创建渠道时，若渠道包含的模型不在 models.dev 中，系统会自动在此页面创建该模型的价格信息,所以此页面显示的是没有从上游获取到价格的模型，用户可以手动设置价格
-- 也支持手动创建 models.dev 中已存在的模型，用于自定义价格
-
-**价格优先级：**
-
-| 优先级 | 来源 | 说明 |
-|:------:|------|------|
-| 🥇 高 | 本页面 | 用户在价格管理页面设置的价格 |
-| 🥈 低 | models.dev | 自动同步的默认价格 |
-
-> 💡 **提示**：如需覆盖某个模型的默认价格，只需在价格管理页面为其设置自定义价格即可。
 
 ---
 
@@ -424,5 +398,4 @@ base_url = "http://127.0.0.1:8080/v1"
 ## 🤝 致谢
 
 - 🙏 [looplj/axonhub](https://github.com/looplj/axonhub) - 本项目的 LLM API 适配模块直接源自该仓库的实现
-- 📊 [sst/models.dev](https://github.com/sst/models.dev) - AI 模型数据库，提供模型价格数据
 - 🇨🇳 [AtomGit](https://atomgit.com/bestruirui/octopus) - 国内代码托管

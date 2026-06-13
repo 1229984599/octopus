@@ -59,8 +59,13 @@ func init() {
 				Handle(testProxy),
 		).
 		AddRoute(
-			router.NewRoute("/export", http.MethodGet).
+			router.NewRoute("/export", http.MethodPost).
+				Use(middleware.RequireJSON()).
 				Handle(exportDB),
+		).
+		AddRoute(
+			router.NewRoute("/export/preview", http.MethodGet).
+				Handle(previewExportDB),
 		).
 		AddRoute(
 			router.NewRoute("/import", http.MethodPost).
@@ -231,11 +236,20 @@ func testProxy(c *gin.Context) {
 	})
 }
 
-func exportDB(c *gin.Context) {
-	includeLogs, _ := strconv.ParseBool(c.DefaultQuery("include_logs", "false"))
-	includeStats, _ := strconv.ParseBool(c.DefaultQuery("include_stats", "false"))
+type dbBackupRequest struct {
+	IncludeLogs  bool                    `json:"include_logs"`
+	IncludeStats bool                    `json:"include_stats"`
+	Selection    model.DBBackupSelection `json:"selection"`
+}
 
-	dump, err := op.DBExportAll(c.Request.Context(), includeLogs, includeStats)
+func exportDB(c *gin.Context) {
+	var request dbBackupRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		resp.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	dump, err := op.DBExportAll(c.Request.Context(), request.IncludeLogs, request.IncludeStats, &request.Selection)
 	if err != nil {
 		resp.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -246,6 +260,15 @@ func exportDB(c *gin.Context) {
 	c.JSON(http.StatusOK, dump)
 }
 
+func previewExportDB(c *gin.Context) {
+	dump, err := op.DBExportAll(c.Request.Context(), false, false, nil)
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, buildDBImportPreview(dump))
+}
+
 func importDB(c *gin.Context) {
 	var dump model.DBDump
 
@@ -254,7 +277,9 @@ func importDB(c *gin.Context) {
 		return
 	}
 
-	result, err := op.DBImportIncremental(c.Request.Context(), &dump)
+	selection := readDBBackupSelection(c)
+
+	result, err := op.DBImportIncremental(c.Request.Context(), &dump, selection)
 	if err != nil {
 		resp.Error(c, http.StatusBadRequest, err.Error())
 		return
@@ -276,6 +301,17 @@ func previewImportDB(c *gin.Context) {
 	resp.Success(c, buildDBImportPreview(&dump))
 }
 
+func readDBBackupSelection(c *gin.Context) *model.DBBackupSelection {
+	raw := strings.TrimSpace(c.PostForm("selection"))
+	if raw == "" {
+		return nil
+	}
+	var selection model.DBBackupSelection
+	if err := json.Unmarshal([]byte(raw), &selection); err != nil {
+		return nil
+	}
+	return &selection
+}
 func readDBDumpFromRequest(c *gin.Context, dump *model.DBDump) error {
 	contentType := c.GetHeader("Content-Type")
 	if strings.Contains(contentType, "multipart/form-data") {
@@ -313,6 +349,9 @@ func buildDBImportPreview(dump *model.DBDump) model.DBImportPreview {
 	preview.IncludeLogs = dump.IncludeLogs
 	preview.IncludeStats = dump.IncludeStats
 
+	preview.Channels = buildChannelSelectableItems(dump.Channels, dump.ChannelKeys)
+	preview.Groups = buildGroupSelectableItems(dump.Groups, dump.GroupItems)
+	preview.Settings = buildSettingSelectableItems(dump.Settings)
 	addTable := func(table string, count int, action string, warning string) {
 		if count <= 0 {
 			return
@@ -338,7 +377,6 @@ func buildDBImportPreview(dump *model.DBDump) model.DBImportPreview {
 	}
 	addTable("groups", len(dump.Groups), "insert_skip_existing", "")
 	addTable("group_items", len(dump.GroupItems), "insert_skip_existing", "")
-	addTable("llm_infos", len(dump.LLMInfos), "upsert_by_name", "")
 	addTable("api_keys", len(dump.APIKeys), "insert_skip_existing", "")
 	addTable("settings", len(dump.Settings), "upsert_by_key", "settings 会覆盖同名配置，请确认后导入")
 
@@ -358,6 +396,61 @@ func buildDBImportPreview(dump *model.DBDump) model.DBImportPreview {
 	return preview
 }
 
+func buildChannelSelectableItems(channels []model.Channel, keys []model.ChannelKey) []model.DBBackupSelectableItem {
+	keyCount := make(map[int]int, len(channels))
+	for _, key := range keys {
+		keyCount[key.ChannelID]++
+	}
+	items := make([]model.DBBackupSelectableItem, 0, len(channels))
+	for _, channel := range channels {
+		items = append(items, model.DBBackupSelectableItem{
+			ID:        channel.ID,
+			Name:      channel.Name,
+			SubCount:  keyCount[channel.ID],
+			Secondary: strings.Join(append([]string{string(channel.Type)}, channelBaseURLStrings(channel.BaseUrls)...), " "),
+		})
+	}
+	return items
+}
+
+func channelBaseURLStrings(baseURLs []model.BaseUrl) []string {
+	values := make([]string, 0, len(baseURLs))
+	for _, baseURL := range baseURLs {
+		if strings.TrimSpace(baseURL.URL) != "" {
+			values = append(values, baseURL.URL)
+		}
+	}
+	return values
+}
+func buildGroupSelectableItems(groups []model.Group, groupItems []model.GroupItem) []model.DBBackupSelectableItem {
+	itemCount := make(map[int]int, len(groups))
+	for _, item := range groupItems {
+		itemCount[item.GroupID]++
+	}
+	items := make([]model.DBBackupSelectableItem, 0, len(groups))
+	for _, group := range groups {
+		items = append(items, model.DBBackupSelectableItem{
+			ID:        group.ID,
+			Name:      group.Name,
+			SubCount:  itemCount[group.ID],
+			Secondary: string(group.Capability),
+		})
+	}
+	return items
+}
+
+func buildSettingSelectableItems(settings []model.Setting) []model.DBBackupSelectableItem {
+	items := make([]model.DBBackupSelectableItem, 0, len(settings))
+	for _, setting := range settings {
+		items = append(items, model.DBBackupSelectableItem{
+			Key:       string(setting.Key),
+			Name:      string(setting.Key),
+			SubCount:  0,
+			Secondary: setting.Value,
+		})
+	}
+	return items
+}
 func decodeDBDump(body []byte, dump *model.DBDump) error {
 	if dump == nil {
 		return json.Unmarshal(body, &struct{}{})
@@ -374,7 +467,6 @@ func decodeDBDump(body []byte, dump *model.DBDump) error {
 		len(dump.GroupItems) == 0 &&
 		len(dump.Settings) == 0 &&
 		len(dump.APIKeys) == 0 &&
-		len(dump.LLMInfos) == 0 &&
 		len(dump.RelayLogs) == 0 &&
 		len(dump.StatsDaily) == 0 &&
 		len(dump.StatsHourly) == 0 &&

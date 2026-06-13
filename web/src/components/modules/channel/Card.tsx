@@ -31,6 +31,7 @@ export function Card({
     onToggleSelect,
     autoOpenEdit = false,
     onAutoOpenEdit,
+    onAutoClose,
 }: {
     channel: Channel;
     stats: StatsMetricsFormatted;
@@ -40,6 +41,7 @@ export function Card({
     onToggleSelect?: (id: number) => void;
     autoOpenEdit?: boolean;
     onAutoOpenEdit?: (id: number) => void;
+    onAutoClose?: () => void;
 }) {
     const t = useTranslations('channel.card');
     const tMetrics = useTranslations('channel.detail.metrics');
@@ -202,6 +204,7 @@ export function Card({
                 stats={stats}
                 autoOpenEdit={autoOpenEdit}
                 onAutoOpenEdit={onAutoOpenEdit}
+                onAutoClose={onAutoClose}
             />
         </MorphingDialog>
     );
@@ -213,16 +216,19 @@ function CardDialog({
     stats,
     autoOpenEdit,
     onAutoOpenEdit,
+    onAutoClose,
 }: {
     cardBody: ReactNode;
     channel: Channel;
     stats: StatsMetricsFormatted;
     autoOpenEdit: boolean;
     onAutoOpenEdit?: (id: number) => void;
+    onAutoClose?: () => void;
 }) {
     const { isOpen, setIsOpen } = useMorphingDialog();
     const [openInEditMode, setOpenInEditMode] = useState(false);
     const openedRef = useRef(false);
+    const wasOpenRef = useRef(false);
 
     useEffect(() => {
         if (!autoOpenEdit) {
@@ -239,9 +245,16 @@ function CardDialog({
     }, [autoOpenEdit, channel.id, onAutoOpenEdit, setIsOpen]);
 
     useEffect(() => {
-        if (isOpen) return;
+        if (isOpen) {
+            wasOpenRef.current = true;
+            return;
+        }
         deferStateUpdate(() => setOpenInEditMode(false));
-    }, [isOpen]);
+        if (autoOpenEdit && wasOpenRef.current) {
+            wasOpenRef.current = false;
+            onAutoClose?.();
+        }
+    }, [autoOpenEdit, isOpen, onAutoClose]);
 
     return (
         <>

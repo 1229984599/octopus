@@ -112,9 +112,6 @@ func createChannel(c *gin.Context) {
 	go func(channel *model.Channel) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		modelStr := channel.Model + "," + channel.CustomModel
-		modelArray := strings.Split(modelStr, ",")
-		helper.LLMPriceAddToDB(modelArray, ctx)
 		helper.ChannelBaseUrlDelayUpdate(channel, ctx)
 		helper.ChannelAutoGroup(channel, ctx)
 	}(&channel)
@@ -137,9 +134,6 @@ func updateChannel(c *gin.Context) {
 	go func(channel *model.Channel) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		modelStr := channel.Model + "," + channel.CustomModel
-		modelArray := strings.Split(modelStr, ",")
-		helper.LLMPriceAddToDB(modelArray, ctx)
 		helper.ChannelBaseUrlDelayUpdate(channel, ctx)
 		helper.ChannelAutoGroup(channel, ctx)
 	}(channel)
@@ -236,9 +230,6 @@ func batchUpdateChannel(c *gin.Context) {
 		go func(channel *model.Channel) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			modelStr := channel.Model + "," + channel.CustomModel
-			modelArray := strings.Split(modelStr, ",")
-			helper.LLMPriceAddToDB(modelArray, ctx)
 			helper.ChannelBaseUrlDelayUpdate(channel, ctx)
 			helper.ChannelAutoGroup(channel, ctx)
 		}(channel)

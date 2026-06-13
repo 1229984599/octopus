@@ -80,18 +80,6 @@
       ]
     },
     {
-      "name": "模型价格管理",
-      "short_name": "价格",
-      "url": "./",
-      "icons": [
-        {
-          "src": "./web-app-manifest-192x192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
       "name": "分组管理",
       "short_name": "分组",
       "url": "./",

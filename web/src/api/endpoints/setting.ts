@@ -231,7 +231,24 @@ export interface DBImportPreviewTable {
     warning?: string;
 }
 
+export interface DBBackupSelectableItem {
+    id: number;
+    key?: string;
+    name: string;
+    sub_count: number;
+    secondary?: string;
+}
+
+export interface DBBackupSelection {
+    channel_ids?: number[];
+    group_ids?: number[];
+    setting_keys?: string[];
+}
+
 export interface DBImportPreview {
+    channels?: DBBackupSelectableItem[];
+    groups?: DBBackupSelectableItem[];
+    settings?: DBBackupSelectableItem[];
     version: number;
     include_logs: boolean;
     include_stats: boolean;
@@ -244,6 +261,7 @@ export interface DBImportPreview {
 export interface DBExportOptions {
     include_logs?: boolean;
     include_stats?: boolean;
+    selection?: DBBackupSelection;
 }
 
 type ApiResponse<T> = {
@@ -301,21 +319,28 @@ async function downloadBlob(blob: Blob, filename: string) {
     }
 }
 
+export function usePreviewExportDB() {
+    return useQuery({
+        queryKey: ['settings', 'export-preview'],
+        queryFn: async () => {
+            return apiClient.get<DBImportPreview>('/api/v1/setting/export/preview');
+        },
+        enabled: false,
+    });
+}
 /**
  * 导出数据库（下载 JSON 文件）
  */
 export function useExportDB() {
     return useMutation({
         mutationFn: async (options: DBExportOptions = {}) => {
-            const params = new URLSearchParams();
-            params.set('include_logs', String(!!options.include_logs));
-            params.set('include_stats', String(!!options.include_stats));
-
-            const res = await fetch(`${API_BASE_URL}/api/v1/setting/export?${params.toString()}`, {
-                method: 'GET',
+            const res = await fetch(`${API_BASE_URL}/api/v1/setting/export`, {
+                method: 'POST',
                 headers: {
                     Authorization: getAuthHeader(),
+                    'Content-Type': 'application/json',
                 },
+                body: JSON.stringify(options),
             });
 
             if (!res.ok) {
@@ -339,9 +364,10 @@ export function useExportDB() {
  */
 export function useImportDB() {
     return useMutation({
-        mutationFn: async (file: File) => {
+        mutationFn: async ({ file, selection }: { file: File; selection?: DBBackupSelection }) => {
             const form = new FormData();
             form.append('file', file);
+            if (selection) form.append('selection', JSON.stringify(selection));
 
             const res = await fetch(`${API_BASE_URL}/api/v1/setting/import`, {
                 method: 'POST',

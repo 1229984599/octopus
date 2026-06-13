@@ -8,6 +8,8 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAutoCheckStatus, useCancelAutoCheck, useRunAutoCheck, useSettingList, useSetSetting, SettingKey, TaskName, useTaskStatus, useTestAutoCheckDingTalk } from '@/api/endpoints/setting';
+import { useChannelList } from '@/api/endpoints/channel';
+import { useGroupList } from '@/api/endpoints/group';
 import { toast } from '@/components/common/Toast';
 import type { ApiError } from '@/api/types';
 import { cn } from '@/lib/utils';
@@ -25,6 +27,8 @@ export function SettingAutoCheck() {
     const testDingTalk = useTestAutoCheckDingTalk();
     const { data: autoCheckStatus } = useTaskStatus(TaskName.AutoCheck);
     const { data: checkStatus } = useAutoCheckStatus();
+    const { data: channelsData } = useChannelList();
+    const { data: groupsData } = useGroupList();
 
     const [enabled, setEnabled] = useState(true);
     const [cron, setCron] = useState('0 2 * * *');
@@ -162,10 +166,10 @@ export function SettingAutoCheck() {
     const summary = checkStatus?.summary;
     const logs = (checkStatus?.logs ?? []).slice(-80).reverse();
     const pendingItems = [
-        ...((summary?.disabled_key_details ?? summary?.deleted_key_details) ?? []).map(item => ({ type: t('autoCheck.status.disabledKey'), text: item, channelId: extractChannelID(item) })),
-        ...(summary?.disabled_details ?? []).map(item => ({ type: t('autoCheck.status.disabled'), text: item, channelId: extractChannelID(item) })),
-        ...(summary?.deleted_item_details ?? []).map(item => ({ type: t('autoCheck.status.manualItem'), text: item, channelId: extractChannelID(item) })),
-    ].slice(-8).reverse();
+        ...((summary?.disabled_key_details ?? summary?.deleted_key_details) ?? []).map(item => ({ type: t('autoCheck.status.disabledKey'), text: item, channelId: extractChannelID(item), keyHint: extractKeyHint(item), groupHint: null })),
+        ...(summary?.disabled_details ?? []).map(item => ({ type: t('autoCheck.status.disabled'), text: item, channelId: extractChannelID(item), keyHint: null, groupHint: null })),
+        ...(summary?.deleted_item_details ?? []).map(item => ({ type: t('autoCheck.status.manualItem'), text: item, channelId: extractChannelID(item), keyHint: null, groupHint: extractGroupHint(item) })),
+    ].filter((item) => !isPendingItemResolved(item, channelsData, groupsData)).slice(-8).reverse();
     const detailItems = [
         ...pendingItems,
         ...(summary?.errors ?? []).map(item => ({ type: t('autoCheck.status.error'), text: item, channelId: null })),
@@ -266,7 +270,7 @@ export function SettingAutoCheck() {
                                             variant="ghost"
                                             size="sm"
                                             className="h-7 rounded-lg px-2 text-xs"
-                                                onClick={() => openChannelEditor(group.channelId!)}
+                                                onClick={() => openChannelEditor(group.channelId!, { returnTo: 'autocheck' })}
                                         >
                                             <ExternalLink className="size-3.5" />
                                             {t('autoCheck.pending.open')}
@@ -470,6 +474,45 @@ export function SettingAutoCheck() {
     );
 }
 
+
+function extractKeyHint(text: string) {
+    const match = text.match(/(?:key|密钥)[:：\s]*([^\s,，)）]+)/i);
+    return match?.[1] ?? null;
+}
+
+function extractGroupHint(text: string) {
+    const match = text.match(/(?:group|分组)[:：\s#]*([^\s,，)）]+)/i);
+    return match?.[1] ?? null;
+}
+
+function isPendingItemResolved(
+    item: { type: string; text: string; channelId: number | null; keyHint: string | null; groupHint: string | null },
+    channelsData: ReturnType<typeof useChannelList>['data'] | undefined,
+    groupsData: ReturnType<typeof useGroupList>['data'] | undefined,
+) {
+    if (item.channelId) {
+        const channel = channelsData?.find((entry) => entry.raw.id === item.channelId)?.raw;
+        if (!channel) return true;
+        if (!channel.enabled) return false;
+        if (item.keyHint) {
+            const matchedKey = channel.keys.find((key) => key.channel_key.includes(item.keyHint!) || key.remark.includes(item.keyHint!));
+            return matchedKey ? matchedKey.enabled && !isKeyStatusAbnormal(matchedKey.status_code) : true;
+        }
+        return channel.keys.some((key) => key.enabled && !isKeyStatusAbnormal(key.status_code));
+    }
+
+    if (item.groupHint) {
+        const group = groupsData?.find((entry) => entry.name === item.groupHint || String(entry.id) === item.groupHint);
+        if (!group) return true;
+        return (group.items ?? []).length > 0;
+    }
+
+    return false;
+}
+
+function isKeyStatusAbnormal(statusCode: number) {
+    return statusCode === 401 || statusCode === 403 || statusCode === 429 || statusCode >= 500;
+}
 function extractChannelID(text: string) {
     const match = text.match(/\((\d+)\)/);
     if (!match) return null;

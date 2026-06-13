@@ -14,6 +14,7 @@ import {
 } from '@/api/endpoints/channel';
 import { Card } from './Card';
 import { useSearchStore, useToolbarViewOptionsStore } from '@/components/modules/toolbar';
+import { useNavStore } from '@/components/modules/navbar';
 import { VirtualizedGrid } from '@/components/common/VirtualizedGrid';
 import { Button } from '@/components/ui/button';
 import {
@@ -89,6 +90,7 @@ export function Channel() {
     const filter = useToolbarViewOptionsStore((s) => s.channelFilter);
     const pendingEditChannelId = useChannelNavigationStore((s) => s.editChannelId);
     const clearPendingEditChannel = useChannelNavigationStore((s) => s.clearEditChannel);
+    const consumePendingReturnTo = useChannelNavigationStore((s) => s.consumeReturnTo);
     const t = useTranslations('channel.batch');
 
     const [selectionMode, setSelectionMode] = useState(false);
@@ -369,6 +371,10 @@ export function Channel() {
                                 onToggleSelect={toggleSelect}
                                 autoOpenEdit={pendingEditChannelId === item.raw.id}
                                 onAutoOpenEdit={clearPendingEditChannel}
+                                onAutoClose={() => {
+                                    const returnTo = consumePendingReturnTo();
+                                    if (returnTo) useNavStore.getState().setActiveItem(returnTo);
+                                }}
                             />
                         )}
                     />

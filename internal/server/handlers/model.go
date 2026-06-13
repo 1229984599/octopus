@@ -6,7 +6,6 @@ import (
 
 	"github.com/1229984599/octopus/internal/model"
 	"github.com/1229984599/octopus/internal/op"
-	"github.com/1229984599/octopus/internal/price"
 	"github.com/1229984599/octopus/internal/server/middleware"
 	"github.com/1229984599/octopus/internal/server/resp"
 	"github.com/1229984599/octopus/internal/server/router"
@@ -19,32 +18,8 @@ func init() {
 		Use(middleware.Auth()).
 		Use(middleware.RequireJSON()).
 		AddRoute(
-			router.NewRoute("/list", http.MethodGet).
-				Handle(listLLM),
-		).
-		AddRoute(
-			router.NewRoute("/create", http.MethodPost).
-				Handle(createLLM),
-		).
-		AddRoute(
 			router.NewRoute("/channel", http.MethodGet).
 				Handle(listLLMByChannel),
-		).
-		AddRoute(
-			router.NewRoute("/update", http.MethodPost).
-				Handle(updateLLM),
-		).
-		AddRoute(
-			router.NewRoute("/delete", http.MethodPost).
-				Handle(deleteLLM),
-		).
-		AddRoute(
-			router.NewRoute("/update-price", http.MethodPost).
-				Handle(updateLLMPrice),
-		).
-		AddRoute(
-			router.NewRoute("/last-update-time", http.MethodGet).
-				Handle(getLastUpdateTime),
 		)
 	router.NewGroupRouter("/v1").
 		Use(middleware.APIKeyAuth()).
@@ -111,15 +86,6 @@ func getModelList(c *gin.Context) {
 	}
 }
 
-func listLLM(c *gin.Context) {
-	models, err := op.LLMList(c.Request.Context())
-	if err != nil {
-		resp.Error(c, http.StatusInternalServerError, err.Error())
-		return
-	}
-	resp.Success(c, models)
-}
-
 func listLLMByChannel(c *gin.Context) {
 	channels, err := op.ChannelLLMList(c.Request.Context())
 	if err != nil {
@@ -127,59 +93,4 @@ func listLLMByChannel(c *gin.Context) {
 		return
 	}
 	resp.Success(c, channels)
-}
-
-func createLLM(c *gin.Context) {
-	var model model.LLMInfo
-	if err := c.ShouldBindJSON(&model); err != nil {
-		resp.Error(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := op.LLMCreate(model, c.Request.Context()); err != nil {
-		resp.Error(c, http.StatusInternalServerError, err.Error())
-		return
-	}
-	resp.Success(c, model)
-}
-
-func updateLLM(c *gin.Context) {
-	var model model.LLMInfo
-	if err := c.ShouldBindJSON(&model); err != nil {
-		resp.Error(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := op.LLMUpdate(model, c.Request.Context()); err != nil {
-		resp.Error(c, http.StatusInternalServerError, err.Error())
-		return
-	}
-	resp.Success(c, model)
-}
-
-func deleteLLM(c *gin.Context) {
-	var req struct {
-		Name string `json:"name" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		resp.Error(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := op.LLMDelete(req.Name, c.Request.Context()); err != nil {
-		resp.Error(c, http.StatusInternalServerError, err.Error())
-		return
-	}
-	resp.Success(c, nil)
-}
-
-func updateLLMPrice(c *gin.Context) {
-	err := price.UpdateLLMPrice(c.Request.Context())
-	if err != nil {
-		resp.Error(c, http.StatusInternalServerError, err.Error())
-		return
-	}
-	resp.Success(c, nil)
-}
-
-func getLastUpdateTime(c *gin.Context) {
-	time := price.GetLastUpdateTime()
-	resp.Success(c, time)
 }

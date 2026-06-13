@@ -206,7 +206,6 @@ func (ra *relayAttempt) run() (bool, error) {
 	ra.usedKey.LastUseTimeStamp = time.Now().Unix()
 
 	if fwdErr == nil {
-		ra.usedKey.TotalCost += ra.metrics.Stats.InputCost + ra.metrics.Stats.OutputCost
 		op.ChannelKeyUpdate(ra.usedKey)
 
 		span.End(dbmodel.AttemptSuccess, "")

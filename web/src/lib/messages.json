@@ -28,15 +28,10 @@
         "requestCount": "请求次数",
         "timeConsumed": "消耗时间",
         "totalToken": "消耗 Token",
-        "totalCost": "消耗费用",
         "inputTokens": "输入 Tokens",
-        "inputCost": "输入费用",
         "outputTokens": "输出 Tokens",
-        "outputCost": "输出费用",
         "successRequests": "成功请求",
         "failedRequests": "失败请求",
-        "quota": "剩余额度",
-        "unlimited": "无限制",
         "expireAt": "过期时间",
         "neverExpire": "永不过期",
         "daysLeft": "天后到期",
@@ -80,11 +75,6 @@
                     "all": "全部分组",
                     "withMembers": "有成员",
                     "empty": "空分组"
-                },
-                "model": {
-                    "all": "全部模型",
-                    "priced": "仅收费",
-                    "free": "仅免费"
                 }
             }
         }
@@ -101,7 +91,6 @@
             "requestCount": "请求次数",
             "waitTime": "等待时间",
             "totalToken": "消耗 Token",
-            "totalCost": "消耗费用",
             "noData": "无数据"
         },
         "total": {
@@ -115,20 +104,15 @@
             "failedRequests": "失败请求",
             "timeConsumed": "消耗时间",
             "totalToken": "消耗 Token",
-            "totalCost": "消耗费用",
             "inputTokens": "输入 Tokens",
-            "inputCost": "输入费用",
-            "outputTokens": "输出 Tokens",
-            "outputCost": "输出费用"
+            "outputTokens": "输出 Tokens"
         },
         "chart": {
             "title": "趋势",
             "totalRequests": "请求次数",
-            "totalCost": "消费金额",
             "totalTokens": "Tokens 消耗",
             "timePeriod": "时间周期",
             "metricType": {
-                "cost": "金额",
                 "count": "次数",
                 "tokens": "Tokens"
             },
@@ -140,7 +124,6 @@
         },
         "rank": {
             "title": "排行榜",
-            "sortByCost": "金额",
             "sortByCount": "次数",
             "sortByTokens": "Tokens",
             "sortByFailureRate": "失败率",
@@ -323,8 +306,6 @@
                 "noData": "暂无统计数据",
                 "inputToken": "输入 Token",
                 "outputToken": "输出 Token",
-                "inputCost": "输入费用",
-                "outputCost": "输出费用",
                 "requestSuccess": "成功请求",
                 "requestFailed": "失败请求"
             },
@@ -336,22 +317,6 @@
                 "deleteSuccess": "API 密钥删除成功",
                 "deleteError": "API 密钥删除失败"
             }
-        },
-        "llmPrice": {
-            "title": "模型价格",
-            "updateInterval": {
-                "label": "自动更新间隔（小时）",
-                "placeholder": "请输入间隔（小时）"
-            },
-            "manualUpdate": {
-                "label": "手动更新价格",
-                "button": "立即更新",
-                "updating": "更新中..."
-            },
-            "lastUpdate": "上次更新",
-            "neverUpdated": "从未更新",
-            "updateSuccess": "价格更新成功",
-            "updateFailed": "价格更新失败"
         },
         "llmSync": {
             "title": "渠道同步",
@@ -493,40 +458,6 @@
         },
         "empty": "暂无分组，点击左上角按钮创建"
     },
-    "model": {
-        "create": {
-            "title": "创建模型",
-            "name": "模型名称",
-            "input": "输入价格",
-            "output": "输出价格",
-            "cacheRead": "缓存读取",
-            "cacheWrite": "缓存写入",
-            "submit": "创建",
-            "submitting": "创建中..."
-        },
-        "toast": {
-            "updated": "模型价格已更新",
-            "updateFailed": "更新失败",
-            "deleted": "模型已删除",
-            "deleteFailed": "删除失败"
-        },
-        "card": {
-            "inputCache": "输入/缓存",
-            "outputCache": "输出/缓存",
-            "edit": "编辑",
-            "delete": "删除"
-        },
-        "overlay": {
-            "cancel": "取消",
-            "deleting": "删除中...",
-            "confirmDelete": "确认删除",
-            "input": "输入",
-            "output": "输出",
-            "cacheRead": "缓存读取",
-            "cacheWrite": "缓存写入",
-            "save": "保存"
-        }
-    },
     "log": {
         "list": {
             "noMore": "没有更多日志了"
@@ -538,7 +469,6 @@
             "totalTime": "总耗时",
             "input": "输入",
             "output": "输出",
-            "cost": "费用",
             "requestContent": "请求内容",
             "responseContent": "响应内容",
             "noRequestContent": "(无请求内容)",
@@ -554,7 +484,6 @@
     "channel": {
         "card": {
             "requestCount": "请求次数",
-            "totalCost": "总成本",
             "availableKeys": "可用 {available}/{total}",
             "abnormalKeys": "{count} 个异常 Key",
             "invalidKeys": "{count} 个失效 Key",
@@ -646,7 +575,6 @@
             "sections": {
                 "requests": "请求详情",
                 "tokens": "Token 使用",
-                "costs": "成本详情",
                 "tags": "标签",
                 "baseUrls": "Base URLs",
                 "keys": "密钥"
@@ -703,13 +631,10 @@
             "metrics": {
                 "totalRequests": "总请求",
                 "totalToken": "总 Token",
-                "totalCost": "总成本",
                 "successRequests": "成功请求",
                 "failedRequests": "失败请求",
                 "inputToken": "输入 Token",
                 "outputToken": "输出 Token",
-                "inputCost": "输入成本",
-                "outputCost": "输出成本",
                 "avgWaitTime": "等待时间"
             },
             "actions": {

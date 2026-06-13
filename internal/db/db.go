@@ -58,7 +58,6 @@ func InitDB(dbType, dsn string, debug bool) error {
 		&model.Group{},
 		&model.GroupItem{},
 		&model.GroupAutoExcludedItem{},
-		&model.LLMInfo{},
 		&model.APIKey{},
 		&model.Setting{},
 		&model.StatsTotal{},

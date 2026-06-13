@@ -21,7 +21,6 @@ func TestDecodeDBDumpSupportsExternalExportShape(t *testing.T) {
 		],
 		"groups": [],
 		"group_items": [],
-		"llm_infos": [],
 		"api_keys": [
 			{
 				"id": 1,

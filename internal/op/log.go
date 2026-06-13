@@ -29,7 +29,6 @@ var relayLogListColumns = []string{
 	"output_tokens",
 	"ftut",
 	"use_time",
-	"cost",
 	"error",
 	"attempts",
 	"total_attempts",

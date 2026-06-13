@@ -8,7 +8,6 @@ import (
 
 	"github.com/1229984599/octopus/internal/model"
 	"github.com/1229984599/octopus/internal/op"
-	"github.com/1229984599/octopus/internal/price"
 	"github.com/1229984599/octopus/internal/utils/log"
 	"github.com/looplj/axonhub/llm"
 )
@@ -39,27 +38,8 @@ func (m *RelayMetrics) RecordUsage(usage *llm.Usage) {
 		return
 	}
 
-	// usage 已由 axonhub/llm 标准化；octopus 仍使用本地模型价格表计算成本，所以这里只做用量落点和价格换算。
 	m.Stats.InputToken = usage.PromptTokens
 	m.Stats.OutputToken = usage.CompletionTokens
-
-	modelPrice := price.GetLLMPrice(m.ActualModel)
-	if modelPrice == nil {
-		return
-	}
-	tokenDetails := usage.PromptTokensDetails
-	if tokenDetails == nil {
-		tokenDetails = &llm.PromptTokensDetails{}
-	}
-	// 缓存读、缓存写和普通输入的单价不同；如果上游返回的缓存明细超过总输入 token，就退回按全部输入 token 计费，避免出现负成本。
-	nonCachedTokens := usage.PromptTokens - tokenDetails.CachedTokens - tokenDetails.WriteCachedTokens
-	if nonCachedTokens < 0 {
-		nonCachedTokens = usage.PromptTokens
-	}
-	m.Stats.InputCost = (float64(tokenDetails.CachedTokens)*modelPrice.CacheRead +
-		float64(tokenDetails.WriteCachedTokens)*modelPrice.CacheWrite +
-		float64(nonCachedTokens)*modelPrice.Input) * 1e-6
-	m.Stats.OutputCost = float64(usage.CompletionTokens) * modelPrice.Output * 1e-6
 }
 
 func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attempts []model.ChannelAttempt) {
@@ -69,8 +49,6 @@ func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attemp
 		WaitTime:    duration.Milliseconds(),
 		InputToken:  m.Stats.InputToken,
 		OutputToken: m.Stats.OutputToken,
-		InputCost:   m.Stats.InputCost,
-		OutputCost:  m.Stats.OutputCost,
 	}
 	if success {
 		globalStats.RequestSuccess = 1
@@ -84,19 +62,16 @@ func (m *RelayMetrics) Save(ctx context.Context, success bool, err error, attemp
 	op.StatsDailyUpdate(context.Background(), globalStats)
 	op.StatsAPIKeyUpdate(m.APIKeyID, globalStats)
 	if channelID > 0 {
-		// 通道成功/失败和等待时间在每次 attempt 结束时已记录；这里仅把最终响应的用量成本归到实际通道，避免重复计数。
+		// 通道成功/失败和等待时间在每次 attempt 结束时已记录；这里仅把最终响应的用量归到实际通道，避免重复计数。
 		op.StatsChannelUpdate(channelID, model.StatsMetrics{
 			InputToken:  m.Stats.InputToken,
 			OutputToken: m.Stats.OutputToken,
-			InputCost:   m.Stats.InputCost,
-			OutputCost:  m.Stats.OutputCost,
 		})
 	}
 
-	log.Infof("relay complete: model=%s, channel=%d(%s), success=%t, duration=%dms, input_token=%d, output_token=%d, input_cost=%f, output_cost=%f, total_cost=%f, attempts=%d",
+	log.Infof("relay complete: model=%s, channel=%d(%s), success=%t, duration=%dms, input_token=%d, output_token=%d, attempts=%d",
 		m.RequestModel, channelID, channelName, success, duration.Milliseconds(),
 		m.Stats.InputToken, m.Stats.OutputToken,
-		m.Stats.InputCost, m.Stats.OutputCost, m.Stats.InputCost+m.Stats.OutputCost,
 		len(attempts))
 
 	// 客户端断开或请求上下文取消后仍要保存最终审计日志，因此持久化阶段主动脱离请求取消信号。
@@ -144,7 +119,6 @@ func (m *RelayMetrics) saveLog(ctx context.Context, err error, duration time.Dur
 	if m.Stats.InputToken > 0 || m.Stats.OutputToken > 0 {
 		relayLog.InputTokens = int(m.Stats.InputToken)
 		relayLog.OutputTokens = int(m.Stats.OutputToken)
-		relayLog.Cost = m.Stats.InputCost + m.Stats.OutputCost
 	}
 
 	relayLog.RequestContent = m.requestContent()

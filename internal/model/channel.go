@@ -173,16 +173,15 @@ func (r *ChannelCreateRequest) UnmarshalJSON(data []byte) error {
 }
 
 type ChannelKey struct {
-	ID               int     `json:"id" gorm:"primaryKey"`
-	ChannelID        int     `json:"channel_id"`
-	Enabled          bool    `json:"enabled" gorm:"default:true"`
-	ChannelKey       string  `json:"channel_key"`
-	StatusCode       int     `json:"status_code"`
-	LastUseTimeStamp int64   `json:"last_use_time_stamp"`
-	TotalCost        float64 `json:"total_cost"`
-	Remark           string  `json:"remark"`
-	Priority         int     `json:"priority" gorm:"default:1"`
-	Weight           int     `json:"weight" gorm:"default:1"`
+	ID               int    `json:"id" gorm:"primaryKey"`
+	ChannelID        int    `json:"channel_id"`
+	Enabled          bool   `json:"enabled" gorm:"default:true"`
+	ChannelKey       string `json:"channel_key"`
+	StatusCode       int    `json:"status_code"`
+	LastUseTimeStamp int64  `json:"last_use_time_stamp"`
+	Remark           string `json:"remark"`
+	Priority         int    `json:"priority" gorm:"default:1"`
+	Weight           int    `json:"weight" gorm:"default:1"`
 }
 
 // ChannelUpdateRequest 渠道更新请求 - 仅包含变更的数据
@@ -310,7 +309,7 @@ func (c *Channel) GetChannelKeyCandidates() []ChannelKey {
 	case GroupModeWeighted:
 		return weightedChannelKeys(available)
 	default:
-		return sortChannelKeysByCost(available)
+		return sortChannelKeysByPriority(available)
 	}
 }
 
@@ -385,18 +384,6 @@ func weightedChannelKeys(keys []ChannelKey) []ChannelKey {
 	for i := range scored {
 		result[i] = scored[i].key
 	}
-	return result
-}
-
-func sortChannelKeysByCost(keys []ChannelKey) []ChannelKey {
-	result := make([]ChannelKey, len(keys))
-	copy(result, keys)
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].TotalCost == result[j].TotalCost {
-			return result[i].ID < result[j].ID
-		}
-		return result[i].TotalCost < result[j].TotalCost
-	})
 	return result
 }
 

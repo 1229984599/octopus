@@ -13,7 +13,7 @@ import (
 
 const dbDumpVersion = 1
 
-func DBExportAll(ctx context.Context, includeLogs, includeStats bool) (*model.DBDump, error) {
+func DBExportAll(ctx context.Context, includeLogs, includeStats bool, selection *model.DBBackupSelection) (*model.DBDump, error) {
 	conn := db.GetDB().WithContext(ctx)
 
 	d := &model.DBDump{
@@ -35,16 +35,12 @@ func DBExportAll(ctx context.Context, includeLogs, includeStats bool) (*model.DB
 	if err := conn.Find(&d.GroupItems).Error; err != nil {
 		return nil, fmt.Errorf("export group_items: %w", err)
 	}
-	if err := conn.Find(&d.LLMInfos).Error; err != nil {
-		return nil, fmt.Errorf("export llm_infos: %w", err)
-	}
 	if err := conn.Find(&d.APIKeys).Error; err != nil {
 		return nil, fmt.Errorf("export api_keys: %w", err)
 	}
 	if err := conn.Find(&d.Settings).Error; err != nil {
 		return nil, fmt.Errorf("export settings: %w", err)
 	}
-
 	if includeStats {
 		if err := conn.Find(&d.StatsTotal).Error; err != nil {
 			return nil, fmt.Errorf("export stats_total: %w", err)
@@ -71,11 +67,11 @@ func DBExportAll(ctx context.Context, includeLogs, includeStats bool) (*model.DB
 			return nil, fmt.Errorf("export relay_logs: %w", err)
 		}
 	}
-
+	applyDBDumpSelection(d, selection)
 	return d, nil
 }
 
-func DBImportIncremental(ctx context.Context, dump *model.DBDump) (*model.DBImportResult, error) {
+func DBImportIncremental(ctx context.Context, dump *model.DBDump, selection *model.DBBackupSelection) (*model.DBImportResult, error) {
 	if dump == nil {
 		return nil, fmt.Errorf("empty dump")
 	}
@@ -83,6 +79,8 @@ func DBImportIncremental(ctx context.Context, dump *model.DBDump) (*model.DBImpo
 	if dump.Version != 0 && dump.Version != dbDumpVersion {
 		return nil, fmt.Errorf("unsupported dump version: %d", dump.Version)
 	}
+
+	applyDBDumpSelection(dump, selection)
 
 	conn := db.GetDB().WithContext(ctx)
 	res := &model.DBImportResult{RowsAffected: map[string]int64{}}
@@ -111,11 +109,6 @@ func DBImportIncremental(ctx context.Context, dump *model.DBDump) (*model.DBImpo
 			return fmt.Errorf("import group_items: %w", err)
 		} else {
 			res.RowsAffected["group_items"] = n
-		}
-		if n, err := createUpsertAll(tx, dump.LLMInfos, []clause.Column{{Name: "name"}}); err != nil {
-			return fmt.Errorf("import llm_infos: %w", err)
-		} else {
-			res.RowsAffected["llm_infos"] = n
 		}
 		if n, err := createDoNothing(tx, dump.APIKeys); err != nil {
 			return fmt.Errorf("import api_keys: %w", err)
@@ -205,4 +198,59 @@ func createUpsertSettings(tx *gorm.DB, rows []model.Setting) (int64, error) {
 		DoUpdates: clause.AssignmentColumns([]string{"value"}),
 	}).Create(&rows)
 	return result.RowsAffected, result.Error
+}
+
+func applyDBDumpSelection(dump *model.DBDump, selection *model.DBBackupSelection) {
+	if dump == nil || selection == nil {
+		return
+	}
+
+	if selection.ChannelIDs != nil {
+		selected := intSet(selection.ChannelIDs)
+		dump.Channels = filterSlice(dump.Channels, func(row model.Channel) bool { return selected[row.ID] })
+		dump.ChannelKeys = filterSlice(dump.ChannelKeys, func(row model.ChannelKey) bool { return selected[row.ChannelID] })
+		if dump.IncludeStats {
+			dump.StatsChannel = filterSlice(dump.StatsChannel, func(row model.StatsChannel) bool { return selected[row.ChannelID] })
+			dump.StatsModel = filterSlice(dump.StatsModel, func(row model.StatsModel) bool { return selected[row.ChannelID] })
+		}
+	}
+
+	if selection.GroupIDs != nil {
+		selected := intSet(selection.GroupIDs)
+		dump.Groups = filterSlice(dump.Groups, func(row model.Group) bool { return selected[row.ID] })
+		dump.GroupItems = filterSlice(dump.GroupItems, func(row model.GroupItem) bool { return selected[row.GroupID] })
+	}
+
+	if selection.SettingKeys != nil {
+		selected := stringSet(selection.SettingKeys)
+		dump.Settings = filterSlice(dump.Settings, func(row model.Setting) bool { return selected[string(row.Key)] })
+	}
+}
+
+func intSet(ids []int) map[int]bool {
+	set := make(map[int]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return set
+}
+
+func stringSet(values []string) map[string]bool {
+	set := make(map[string]bool, len(values))
+	for _, value := range values {
+		set[value] = true
+	}
+	return set
+}
+func filterSlice[T any](rows []T, keep func(T) bool) []T {
+	if rows == nil {
+		return nil
+	}
+	filtered := make([]T, 0, len(rows))
+	for _, row := range rows {
+		if keep(row) {
+			filtered = append(filtered, row)
+		}
+	}
+	return filtered
 }

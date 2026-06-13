@@ -6,12 +6,10 @@ import (
 
 	"github.com/1229984599/octopus/internal/model"
 	"github.com/1229984599/octopus/internal/op"
-	"github.com/1229984599/octopus/internal/price"
 	"github.com/1229984599/octopus/internal/utils/log"
 )
 
 const (
-	TaskPriceUpdate  = "price_update"
 	TaskStatsSave    = "stats_save"
 	TaskRelayLogSave = "relay_log_save"
 	TaskSyncLLM      = "sync_llm"
@@ -21,19 +19,6 @@ const (
 )
 
 func Init() {
-	priceUpdateIntervalHours, err := op.SettingGetInt(model.SettingKeyModelInfoUpdateInterval)
-	if err != nil {
-		log.Errorf("failed to get model info update interval: %v", err)
-		return
-	}
-	priceUpdateInterval := time.Duration(priceUpdateIntervalHours) * time.Hour
-	// 注册价格更新任务
-	Register(string(model.SettingKeyModelInfoUpdateInterval), priceUpdateInterval, true, func() {
-		if err := price.UpdateLLMPrice(context.Background()); err != nil {
-			log.Warnf("failed to update price info: %v", err)
-		}
-	})
-
 	// 注册基础URL延迟任务
 	Register(TaskBaseUrlDelay, 1*time.Hour, true, ChannelBaseUrlDelayTask)
 
