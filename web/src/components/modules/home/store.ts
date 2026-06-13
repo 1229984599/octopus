@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-export type RankSortMode = 'count' | 'tokens';
+export type RankSortMode = 'count' | 'tokens' | 'failureRate';
 export type ChartMetricType = 'count' | 'tokens';
 export type ChartPeriod = '1' | '7' | '30';
 
@@ -33,7 +33,7 @@ export const useHomeViewStore = create<HomeViewState>()(
                 const persisted = (state ?? {}) as Partial<HomeViewState>;
                 return {
                     ...persisted,
-                    rankSortMode: persisted.rankSortMode === 'tokens' ? 'tokens' : 'count',
+                    rankSortMode: persisted.rankSortMode === 'tokens' || persisted.rankSortMode === 'failureRate' ? persisted.rankSortMode : 'count',
                     chartMetricType: persisted.chartMetricType === 'tokens' ? 'tokens' : 'count',
                 };
             },

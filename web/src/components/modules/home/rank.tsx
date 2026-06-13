@@ -25,6 +25,13 @@ export function Rank() {
         return [...channelData].sort((a, b) => b.formatted.total_token.raw - a.formatted.total_token.raw);
     }, [channelData]);
 
+    const rankedByFailureRate = useMemo<ChannelData[]>(() => {
+        if (!channelData) return [];
+        return [...channelData]
+            .filter((channel) => channel.formatted.request_count.raw > 0)
+            .sort((a, b) => getFailureRate(b) - getFailureRate(a));
+    }, [channelData]);
+
     const getMedalEmoji = (rank: number): string => {
         switch (rank) {
             case 1: return '🥇';
@@ -60,23 +67,24 @@ export function Rank() {
 
                             <div className="flex-1 min-w-0">
                                 <p className="font-medium text-sm truncate">{channel.raw.name}</p>
-                                {mode === 'count' && (() => {
+                                {(mode === 'count' || mode === 'failureRate') && (() => {
                                     const successCount = channel.formatted.request_success.raw;
                                     const failedCount = channel.formatted.request_failed.raw;
                                     const totalCount = successCount + failedCount;
                                     const successRate = totalCount > 0 ? (successCount / totalCount) * 100 : 0;
+                                    const failureRate = totalCount > 0 ? (failedCount / totalCount) * 100 : 0;
 
                                     return (
                                         <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                                            <span>{t('successRate')}:</span>
-                                            <span>{successRate.toFixed(1)}%</span>
+                                            <span>{mode === 'count' ? t('successRate') : t('failureRate')}:</span>
+                                            <span>{mode === 'count' ? successRate.toFixed(1) : failureRate.toFixed(1)}%</span>
                                         </div>
                                     );
                                 })()}
                             </div>
 
                             <div className="flex items-center gap-1 text-right shrink-0">
-                                {mode === 'count' ? (
+                                {mode === 'count' || mode === 'failureRate' ? (
                                     <div className="flex items-center gap-1 text-sm font-medium tabular-nums">
                                         <span className="text-accent">
                                             {channel.formatted.request_success.formatted.value}
@@ -116,6 +124,7 @@ export function Rank() {
                     <TabsList>
                         <TabsTrigger value="count">{t('sortByCount')}</TabsTrigger>
                         <TabsTrigger value="tokens">{t('sortByTokens')}</TabsTrigger>
+                        <TabsTrigger value="failureRate">{t('sortByFailureRate')}</TabsTrigger>
                     </TabsList>
                 </div>
                 <TabsContents>
@@ -125,8 +134,17 @@ export function Rank() {
                     <TabsContent value="tokens">
                         {renderList(rankedByTokens, 'tokens')}
                     </TabsContent>
+                    <TabsContent value="failureRate">
+                        {renderList(rankedByFailureRate, 'failureRate')}
+                    </TabsContent>
                 </TabsContents>
             </Tabs>
         </div>
     );
+}
+
+function getFailureRate(channel: ChannelData): number {
+    const total = channel.formatted.request_count.raw;
+    if (total <= 0) return 0;
+    return channel.formatted.request_failed.raw / total;
 }

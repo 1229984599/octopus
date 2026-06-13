@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/animate-ui/components/animate/tooltip';
 import { openChannelEditor } from '@/components/modules/channel/navigation-store';
 
+type AutoCheckLogLevelFilter = 'all' | 'error' | 'warn' | 'info';
+
 export function SettingAutoCheck() {
     const t = useTranslations('setting');
     const { data: settings } = useSettingList();
@@ -28,6 +30,7 @@ export function SettingAutoCheck() {
     const [cron, setCron] = useState('0 2 * * *');
     const [webhook, setWebhook] = useState('');
     const [dingTalkSecret, setDingTalkSecret] = useState('');
+    const [logLevelFilter, setLogLevelFilter] = useState<AutoCheckLogLevelFilter>('all');
 
     const initialEnabled = useRef(true);
     const initialCron = useRef('0 2 * * *');
@@ -167,6 +170,33 @@ export function SettingAutoCheck() {
         ...pendingItems,
         ...(summary?.errors ?? []).map(item => ({ type: t('autoCheck.status.error'), text: item, channelId: null })),
     ].slice(-8).reverse();
+    const pendingGroups = new Map<string, { channelId: number | null; title: string; items: typeof pendingItems }>();
+    pendingItems.forEach((item) => {
+        const key = item.channelId ? `channel-${item.channelId}` : `misc-${item.text}`;
+        const existing = pendingGroups.get(key);
+        if (existing) {
+            existing.items.push(item);
+            return;
+        }
+        pendingGroups.set(key, {
+            channelId: item.channelId,
+            title: item.channelId ? `${t('autoCheck.pending.channel')} #${item.channelId}` : t('autoCheck.pending.other'),
+            items: [item],
+        });
+    });
+    const groupedPendingItems = Array.from(pendingGroups.values());
+    const filteredLogs = logLevelFilter === 'all'
+        ? logs
+        : logs.filter((entry) => {
+            const normalized = entry.level === 'error' || entry.level === 'warn' ? entry.level : 'info';
+            return normalized === logLevelFilter;
+        });
+    const logFilters: Array<{ value: AutoCheckLogLevelFilter; label: string }> = [
+        { value: 'all', label: t('autoCheck.logs.all') },
+        { value: 'error', label: t('autoCheck.logs.error') },
+        { value: 'warn', label: t('autoCheck.logs.warn') },
+        { value: 'info', label: t('autoCheck.logs.info') },
+    ];
 
     return (
         <div className="space-y-4">
@@ -219,29 +249,38 @@ export function SettingAutoCheck() {
                     <span>{t('autoCheck.status.finishedAt')}: {formatTaskTime(checkStatus?.finished_at, t('autoCheck.noSchedule'))}</span>
                 </div>
 
-                {pendingItems.length > 0 && (
+                {groupedPendingItems.length > 0 && (
                     <div className="space-y-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-2">
                         <div className="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-300">
                             <KeyRound className="size-3.5" />
                             {t('autoCheck.pending.title')}
                         </div>
-                        <div className="max-h-36 space-y-1 overflow-y-auto">
-                            {pendingItems.map((item, index) => (
-                                <div key={`${item.type}-${index}`} className="grid grid-cols-[4.5rem_1fr_auto] items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5 text-xs">
-                                    <span className="text-muted-foreground">{item.type}</span>
-                                    <span className="break-all text-foreground/90">{item.text}</span>
-                                    {item.channelId && (
+                        <div className="max-h-52 space-y-2 overflow-y-auto">
+                            {groupedPendingItems.map((group) => (
+                                <div key={`${group.title}-${group.items[0]?.text ?? ''}`} className="rounded-xl bg-background/70 p-2 text-xs">
+                                    <div className="mb-1 flex items-center justify-between gap-2">
+                                        <span className="font-medium text-foreground">{group.title}</span>
+                                        {group.channelId && (
                                         <Button
                                             type="button"
                                             variant="ghost"
                                             size="sm"
                                             className="h-7 rounded-lg px-2 text-xs"
-                                            onClick={() => openChannelEditor(item.channelId!)}
+                                                onClick={() => openChannelEditor(group.channelId!)}
                                         >
                                             <ExternalLink className="size-3.5" />
                                             {t('autoCheck.pending.open')}
                                         </Button>
-                                    )}
+                                        )}
+                                    </div>
+                                    <div className="space-y-1">
+                                        {group.items.map((item, index) => (
+                                            <div key={`${item.type}-${index}`} className="grid grid-cols-[4.5rem_1fr] gap-2">
+                                                <span className="text-muted-foreground">{item.type}</span>
+                                                <span className="break-all text-foreground/90">{item.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -260,13 +299,30 @@ export function SettingAutoCheck() {
                 )}
 
                 <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-xs font-medium text-foreground">{t('autoCheck.logs.title')}</span>
-                        <span className="text-[11px] text-muted-foreground">{t('autoCheck.logs.recent')}</span>
+                        <div className="flex flex-wrap items-center gap-1">
+                            {logFilters.map((item) => (
+                                <button
+                                    key={item.value}
+                                    type="button"
+                                    onClick={() => setLogLevelFilter(item.value)}
+                                    className={cn(
+                                        'h-6 rounded-lg border px-2 text-[11px] transition-colors',
+                                        logLevelFilter === item.value
+                                            ? 'border-primary bg-primary text-primary-foreground'
+                                            : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                                    )}
+                                >
+                                    {item.label}
+                                </button>
+                            ))}
+                            <span className="ml-1 text-[11px] text-muted-foreground">{t('autoCheck.logs.recent')}</span>
+                        </div>
                     </div>
                     <div className="max-h-52 space-y-1 overflow-y-auto rounded-xl bg-background/70 p-2">
-                        {logs.length > 0 ? (
-                            logs.map((entry, index) => (
+                        {filteredLogs.length > 0 ? (
+                            filteredLogs.map((entry, index) => (
                                 <div key={`${entry.time}-${index}`} className="grid grid-cols-[4.2rem_3.5rem_1fr] gap-2 text-xs">
                                     <span className="text-muted-foreground tabular-nums">{formatLogTime(entry.time)}</span>
                                     <span className={cn(

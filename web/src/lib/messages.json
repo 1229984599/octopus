@@ -105,11 +105,14 @@
             "noData": "无数据"
         },
         "total": {
+            "overview": "运行概览",
             "requestStats": "请求统计",
             "totalStats": "全部统计",
             "inputStats": "输入统计",
             "outputStats": "输出统计",
             "requestCount": "请求次数",
+            "successRate": "成功率",
+            "failedRequests": "失败请求",
             "timeConsumed": "消耗时间",
             "totalToken": "消耗 Token",
             "totalCost": "消耗费用",
@@ -140,8 +143,10 @@
             "sortByCost": "金额",
             "sortByCount": "次数",
             "sortByTokens": "Tokens",
+            "sortByFailureRate": "失败率",
             "noData": "暂无排行数据",
-            "successRate": "成功率"
+            "successRate": "成功率",
+            "failureRate": "失败率"
         }
     },
     "setting": {
@@ -236,11 +241,14 @@
             },
             "pending": {
                 "title": "待处理项",
-                "open": "打开"
+                "open": "打开",
+                "channel": "渠道",
+                "other": "其他"
             },
             "logs": {
                 "title": "运行日志",
                 "recent": "最近 80 条",
+                "all": "全部",
                 "info": "信息",
                 "warn": "警告",
                 "error": "错误",
