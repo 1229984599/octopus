@@ -5,7 +5,7 @@ import {
     MorphingDialogContent,
     useMorphingDialog,
 } from '@/components/ui/morphing-dialog';
-import { AlertTriangle, Check, CheckCircle2, Clock, DollarSign, Key, Layers, MessageSquare, ShieldAlert, XCircle } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Clock, KeyRound, MessageSquare, ShieldAlert, XCircle } from 'lucide-react';
 import { type StatsMetricsFormatted } from '@/api/endpoints/stats';
 import { type Channel, useEnableChannel } from '@/api/endpoints/channel';
 import { CardContent } from './CardContent';
@@ -16,6 +16,7 @@ import { toast } from '@/components/common/Toast';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { getChannelHealth } from './health';
 
 function deferStateUpdate(update: () => void) {
     queueMicrotask(update);
@@ -41,28 +42,20 @@ export function Card({
     onAutoOpenEdit?: (id: number) => void;
 }) {
     const t = useTranslations('channel.card');
-    const tForm = useTranslations('channel.form');
-    const tSections = useTranslations('channel.detail.sections');
     const tMetrics = useTranslations('channel.detail.metrics');
     const enableChannel = useEnableChannel();
     const isListLayout = layout === 'list';
 
-    const splitModels = (models: string) =>
-        models
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean);
-
-    const modelCount = new Set([
-        ...splitModels(channel.model),
-        ...splitModels(channel.custom_model),
-    ]).size;
-    const enabledKeyCount = channel.keys.filter((item) => item.enabled).length;
-    const abnormalKeys = channel.keys.filter((item) => item.status_code && (item.status_code < 200 || item.status_code >= 300));
-    const invalidKeys = channel.keys.filter((item) => item.status_code === 401 || item.status_code === 403);
-    const lastCheckedAt = channel.keys.reduce((latest, item) => Math.max(latest, item.last_use_time_stamp || 0), 0);
+    const health = getChannelHealth(channel);
     const visibleTags = channel.tags.slice(0, isListLayout ? 4 : 3);
     const hiddenTagCount = Math.max(0, channel.tags.length - visibleTags.length);
+    const checkedAtLabel = health.lastCheckedAt > 0 ? formatCompactDate(health.lastCheckedAt) : '';
+    const checkedAtTitle = health.lastCheckedAt > 0 ? new Date(health.lastCheckedAt * 1000).toLocaleString() : '';
+    const riskKeyCount = health.abnormalKeys + health.invalidKeys;
+    const riskTitle = [
+        health.abnormalKeys > 0 ? t('abnormalKeys', { count: health.abnormalKeys }) : '',
+        health.invalidKeys > 0 ? t('invalidKeys', { count: health.invalidKeys }) : '',
+    ].filter(Boolean).join(' / ');
 
     const handleEnableChange = (checked: boolean) => {
         enableChannel.mutate(
@@ -81,7 +74,7 @@ export function Card({
     const cardBody = (
         <article
             className={cn(
-                'relative flex flex-col gap-4 rounded-3xl border bg-card text-card-foreground p-4 transition-all duration-200',
+                'relative flex h-full min-h-60 flex-col gap-4 rounded-3xl border bg-card text-card-foreground p-4 transition-all duration-200',
                 selected ? 'border-primary ring-2 ring-primary/20' : 'border-border',
                 selectionMode && 'cursor-pointer'
             )}
@@ -139,43 +132,45 @@ export function Card({
                 </div>
             )}
 
-            {(abnormalKeys.length > 0 || lastCheckedAt > 0) && (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {abnormalKeys.length > 0 && (
+            <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 rounded-2xl border border-border/70 bg-background/60 p-2 text-xs">
+                {(health.totalKeys > 0 || health.abnormalKeys > 0 || health.invalidKeys > 0 || health.lastCheckedAt > 0) ? (
+                    <>
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
                         <HealthPill
-                            icon={<AlertTriangle className="size-3.5" />}
-                            tone="warn"
-                            label={t('abnormalKeys', { count: abnormalKeys.length })}
+                            icon={<KeyRound className="size-3.5" />}
+                            tone={health.availableKeys > 0 ? 'neutral' : 'danger'}
+                            label={`${health.availableKeys}/${health.totalKeys}`}
+                            title={t('availableKeys', { available: health.availableKeys, total: health.totalKeys })}
                         />
+                        {riskKeyCount > 0 && (
+                            <HealthPill
+                                icon={health.invalidKeys > 0 ? <ShieldAlert className="size-3.5" /> : <AlertTriangle className="size-3.5" />}
+                                tone={health.invalidKeys > 0 ? 'danger' : 'warn'}
+                                label={`异常 ${riskKeyCount}`}
+                                title={riskTitle}
+                            />
+                        )}
+                    </div>
+                    {health.lastCheckedAt > 0 && (
+                        <div className="flex min-w-fit items-center gap-1.5 text-muted-foreground" title={checkedAtTitle}>
+                            <Clock className="size-3.5 shrink-0" />
+                            <span className="whitespace-nowrap">{checkedAtLabel}</span>
+                        </div>
                     )}
-                    {invalidKeys.length > 0 && (
-                        <HealthPill
-                            icon={<ShieldAlert className="size-3.5" />}
-                            tone="danger"
-                            label={t('invalidKeys', { count: invalidKeys.length })}
-                        />
-                    )}
-                    {lastCheckedAt > 0 && (
-                        <HealthPill
-                            icon={<Clock className="size-3.5" />}
-                            tone="neutral"
-                            label={new Date(lastCheckedAt * 1000).toLocaleString()}
-                        />
-                    )}
-                </div>
-            )}
+                    </>
+                ) : (
+                    <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                        <KeyRound className="size-3.5 shrink-0" />
+                        <span>{t('availableKeys', { available: 0, total: 0 })}</span>
+                    </div>
+                )}
+            </div>
 
             {isListLayout ? (
-                <dl className="grid grid-cols-2 gap-2 lg:grid-cols-6">
+                <dl className="mt-auto grid grid-cols-2 gap-2 lg:grid-cols-3">
                     <ChannelMetric icon={<MessageSquare className="size-3.5 text-primary" />} label={t('requestCount')}>
                         {stats.request_count.formatted.value}
                         <span className="ml-1 text-xs text-muted-foreground">{stats.request_count.formatted.unit}</span>
-                    </ChannelMetric>
-                    <ChannelMetric icon={<Layers className="size-3.5 text-primary" />} label={tForm('model')}>
-                        {modelCount}
-                    </ChannelMetric>
-                    <ChannelMetric icon={<Key className="size-3.5 text-primary" />} label={tSections('keys')}>
-                        {enabledKeyCount}/{channel.keys.length}
                     </ChannelMetric>
                     <ChannelMetric icon={<CheckCircle2 className="size-3.5 text-emerald-500" />} label={tMetrics('successRequests')}>
                         {stats.request_success.formatted.value}
@@ -183,23 +178,12 @@ export function Card({
                     <ChannelMetric icon={<XCircle className="size-3.5 text-destructive" />} label={tMetrics('failedRequests')}>
                         {stats.request_failed.formatted.value}
                     </ChannelMetric>
-                    <ChannelMetric icon={<DollarSign className="size-3.5 text-primary" />} label={t('totalCost')}>
-                        {stats.total_cost.formatted.value}
-                        <span className="ml-1 text-xs text-muted-foreground">{stats.total_cost.formatted.unit}</span>
-                    </ChannelMetric>
                 </dl>
             ) : (
-                <dl className="grid grid-cols-1 gap-3">
+                <dl className="mt-auto grid grid-cols-1 gap-3">
                     <SummaryMetric icon={<MessageSquare className="h-5 w-5" />} label={t('requestCount')}>
                         {stats.request_count.formatted.value}
                         <span className="ml-1 text-xs text-muted-foreground">{stats.request_count.formatted.unit}</span>
-                    </SummaryMetric>
-                    <SummaryMetric icon={<Key className="h-5 w-5" />} label={`${tSections('keys')} / ${tForm('model')}`}>
-                        <span className="inline-flex items-center gap-2 text-sm">
-                            <span>{channel.keys.length}</span>
-                            <span className="text-muted-foreground">·</span>
-                            <span>{modelCount}</span>
-                        </span>
                     </SummaryMetric>
                 </dl>
             )}
@@ -261,7 +245,7 @@ function CardDialog({
 
     return (
         <>
-            <MorphingDialogTrigger className="w-full">
+            <MorphingDialogTrigger className="h-full w-full">
                 {cardBody}
             </MorphingDialogTrigger>
 
@@ -274,9 +258,15 @@ function CardDialog({
     );
 }
 
-function HealthPill({ icon, label, tone }: { icon: React.ReactNode; label: string; tone: 'warn' | 'danger' | 'neutral' }) {
+function formatCompactDate(timestamp: number) {
+    const date = new Date(timestamp * 1000);
+    return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function HealthPill({ icon, label, tone, title }: { icon: React.ReactNode; label: string; tone: 'warn' | 'danger' | 'neutral'; title?: string }) {
     return (
         <div
+            title={title ?? label}
             className={cn(
                 'inline-flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px]',
                 tone === 'warn' && 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
@@ -284,8 +274,8 @@ function HealthPill({ icon, label, tone }: { icon: React.ReactNode; label: strin
                 tone === 'neutral' && 'border-border bg-muted/40 text-muted-foreground'
             )}
         >
-            {icon}
-            <span className="truncate">{label}</span>
+            <span className="shrink-0">{icon}</span>
+            <span className="min-w-0 truncate">{label}</span>
         </div>
     );
 }

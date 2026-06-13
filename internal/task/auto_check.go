@@ -75,6 +75,7 @@ type autoHealthCheckSummary struct {
 	SkippedChannels     int       `json:"skipped_channels"`
 	CheckedKeys         int       `json:"checked_keys"`
 	DeletedKeys         int       `json:"deleted_keys"`
+	DisabledKeys        int       `json:"disabled_keys"`
 	DisabledChannels    int       `json:"disabled_channels"`
 	CheckedGroups       int       `json:"checked_groups"`
 	SkippedGroups       int       `json:"skipped_groups"`
@@ -84,6 +85,7 @@ type autoHealthCheckSummary struct {
 	RecoveredGroupItems int       `json:"recovered_group_items"`
 	RecoveryCheckItems  int       `json:"recovery_check_items"`
 	DeletedKeyDetails   []string  `json:"deleted_key_details"`
+	DisabledKeyDetails  []string  `json:"disabled_key_details"`
 	DisabledDetails     []string  `json:"disabled_details"`
 	DeletedItemDetails  []string  `json:"deleted_item_details"`
 	Errors              []string  `json:"errors"`
@@ -224,6 +226,7 @@ func finishAutoHealthCheckStatus(summary autoHealthCheckSummary, phase, message 
 
 func cloneAutoHealthCheckSummary(summary autoHealthCheckSummary) autoHealthCheckSummary {
 	summary.DeletedKeyDetails = append([]string(nil), summary.DeletedKeyDetails...)
+	summary.DisabledKeyDetails = append([]string(nil), summary.DisabledKeyDetails...)
 	summary.DisabledDetails = append([]string(nil), summary.DisabledDetails...)
 	summary.DeletedItemDetails = append([]string(nil), summary.DeletedItemDetails...)
 	summary.Errors = append([]string(nil), summary.Errors...)
@@ -302,11 +305,11 @@ func runAutoHealthCheckWithNotify(ctx context.Context, cancel context.CancelFunc
 	}()
 
 	summary := runAutoHealthCheck(ctx)
-	log.Infof("auto health check finished: channels=%d skipped_channels=%d keys=%d deleted_keys=%d disabled_channels=%d errors=%d",
+	log.Infof("auto health check finished: channels=%d skipped_channels=%d keys=%d disabled_keys=%d disabled_channels=%d errors=%d",
 		summary.CheckedChannels,
 		summary.SkippedChannels,
 		summary.CheckedKeys,
-		summary.DeletedKeys,
+		summary.DisabledKeys,
 		summary.DisabledChannels,
 		len(summary.Errors),
 	)
@@ -473,6 +476,7 @@ func mergeAutoHealthCheckSummary(summary *autoHealthCheckSummary, delta autoHeal
 	summary.SkippedChannels += delta.SkippedChannels
 	summary.CheckedKeys += delta.CheckedKeys
 	summary.DeletedKeys += delta.DeletedKeys
+	summary.DisabledKeys += delta.DisabledKeys
 	summary.DisabledChannels += delta.DisabledChannels
 	summary.CheckedGroups += delta.CheckedGroups
 	summary.SkippedGroups += delta.SkippedGroups
@@ -482,6 +486,7 @@ func mergeAutoHealthCheckSummary(summary *autoHealthCheckSummary, delta autoHeal
 	summary.RecoveredGroupItems += delta.RecoveredGroupItems
 	summary.RecoveryCheckItems += delta.RecoveryCheckItems
 	summary.DeletedKeyDetails = append(summary.DeletedKeyDetails, delta.DeletedKeyDetails...)
+	summary.DisabledKeyDetails = append(summary.DisabledKeyDetails, delta.DisabledKeyDetails...)
 	summary.DisabledDetails = append(summary.DisabledDetails, delta.DisabledDetails...)
 	summary.DeletedItemDetails = append(summary.DeletedItemDetails, delta.DeletedItemDetails...)
 	summary.Errors = append(summary.Errors, delta.Errors...)
@@ -540,17 +545,17 @@ func checkChannelKeys(ctx context.Context, channel model.Channel, summary *autoH
 
 	invalidKeyIDs := invalidKeyIDs(results)
 	if len(invalidKeyIDs) > 0 {
-		if err := op.ChannelKeysDelete(channel.ID, invalidKeyIDs, ctx); err != nil {
-			errText := fmt.Sprintf("delete channel %d keys: %v", channel.ID, err)
+		if err := op.ChannelKeysEnabled(channel.ID, invalidKeyIDs, false, ctx); err != nil {
+			errText := fmt.Sprintf("disable channel %d keys: %v", channel.ID, err)
 			summary.Errors = append(summary.Errors, errText)
-			appendAutoHealthCheckLog("error", "删除失效 Key 失败", errText)
+			appendAutoHealthCheckLog("error", "禁用失效 Key 失败", errText)
 		} else {
-			summary.DeletedKeys += len(invalidKeyIDs)
-			summary.DeletedKeyDetails = append(summary.DeletedKeyDetails,
+			summary.DisabledKeys += len(invalidKeyIDs)
+			summary.DisabledKeyDetails = append(summary.DisabledKeyDetails,
 				fmt.Sprintf("%s(%d): %d key(s)", channel.Name, channel.ID, len(invalidKeyIDs)))
 			appendAutoHealthCheckLog(
 				"warn",
-				fmt.Sprintf("已删除 %d 个失效 Key", len(invalidKeyIDs)),
+				fmt.Sprintf("已禁用 %d 个失效 Key", len(invalidKeyIDs)),
 				strings.Join(append([]string{current}, invalidKeyDetails(results, keyLabels)...), "\n"),
 			)
 		}
@@ -582,7 +587,6 @@ func checkGroupItems(ctx context.Context, group model.Group, summary *autoHealth
 		return left < right
 	})
 
-	itemsToDelete := make([]int, 0)
 	for _, item := range items {
 		if ctx.Err() != nil {
 			summary.Errors = append(summary.Errors, ctx.Err().Error())
@@ -597,11 +601,10 @@ func checkGroupItems(ctx context.Context, group model.Group, summary *autoHealth
 		}
 		channel, err := op.ChannelGet(item.ChannelID, ctx)
 		if err != nil {
-			itemsToDelete = append(itemsToDelete, item.ID)
 			summary.DeletedItemDetails = append(summary.DeletedItemDetails,
-				fmt.Sprintf("%s(%d): missing channel %d", group.Name, group.ID, item.ChannelID))
-			appendAutoHealthCheckLog("warn", "分组渠道不存在，已标记删除", fmt.Sprintf("%s\n错误: %v", currentItem, err))
-			updateAutoHealthCheckProgress("checking_group_item", "分组渠道不存在，已标记删除", currentItem, *summary)
+				fmt.Sprintf("%s(%d): missing channel %d，需要手动处理", group.Name, group.ID, item.ChannelID))
+			appendAutoHealthCheckLog("warn", "分组渠道不存在，请手动处理", fmt.Sprintf("%s\n错误: %v", currentItem, err))
+			updateAutoHealthCheckProgress("checking_group_item", "分组渠道不存在，请手动处理", currentItem, *summary)
 			continue
 		}
 		if !channel.AutoCheck {
@@ -621,11 +624,10 @@ func checkGroupItems(ctx context.Context, group model.Group, summary *autoHealth
 		}
 		checkChannel := activeKeyChannel(*channel)
 		if len(checkChannel.Keys) == 0 {
-			itemsToDelete = append(itemsToDelete, item.ID)
 			summary.DeletedItemDetails = append(summary.DeletedItemDetails,
-				fmt.Sprintf("%s(%d): %s via %s(%d) has no active keys", group.Name, group.ID, item.ModelName, channel.Name, channel.ID))
-			appendAutoHealthCheckLog("warn", "渠道没有可用 Key，已标记删除分组渠道", currentItem)
-			updateAutoHealthCheckProgress("checking_group_item", "渠道没有可用 Key，已标记删除分组渠道", currentItem, *summary)
+				fmt.Sprintf("%s(%d): %s via %s(%d) has no active keys，需要手动处理", group.Name, group.ID, item.ModelName, channel.Name, channel.ID))
+			appendAutoHealthCheckLog("warn", "渠道没有可用 Key，请手动处理分组渠道", currentItem)
+			updateAutoHealthCheckProgress("checking_group_item", "渠道没有可用 Key，请手动处理分组渠道", currentItem, *summary)
 			continue
 		}
 
@@ -648,17 +650,17 @@ func checkGroupItems(ctx context.Context, group model.Group, summary *autoHealth
 
 		invalidKeyIDs := invalidKeyIDs(results)
 		if len(invalidKeyIDs) > 0 {
-			if err := op.ChannelKeysDelete(channel.ID, invalidKeyIDs, ctx); err != nil {
-				errText := fmt.Sprintf("delete channel %d keys from group %d check: %v", channel.ID, group.ID, err)
+			if err := op.ChannelKeysEnabled(channel.ID, invalidKeyIDs, false, ctx); err != nil {
+				errText := fmt.Sprintf("disable channel %d keys from group %d check: %v", channel.ID, group.ID, err)
 				summary.Errors = append(summary.Errors, errText)
-				appendAutoHealthCheckLog("error", "删除分组检测中的失效 Key 失败", errText)
+				appendAutoHealthCheckLog("error", "禁用分组检测中的失效 Key 失败", errText)
 			} else {
-				summary.DeletedKeys += len(invalidKeyIDs)
-				summary.DeletedKeyDetails = append(summary.DeletedKeyDetails,
+				summary.DisabledKeys += len(invalidKeyIDs)
+				summary.DisabledKeyDetails = append(summary.DisabledKeyDetails,
 					fmt.Sprintf("%s(%d) via %s/%s: %d key(s)", channel.Name, channel.ID, group.Name, item.ModelName, len(invalidKeyIDs)))
 				appendAutoHealthCheckLog(
 					"warn",
-					fmt.Sprintf("已删除分组检测中的 %d 个失效 Key", len(invalidKeyIDs)),
+					fmt.Sprintf("已禁用分组检测中的 %d 个失效 Key", len(invalidKeyIDs)),
 					strings.Join(append([]string{currentItem}, invalidKeyDetails(results, keyLabels)...), "\n"),
 				)
 			}
@@ -674,23 +676,10 @@ func checkGroupItems(ctx context.Context, group model.Group, summary *autoHealth
 			continue
 		}
 
-		itemsToDelete = append(itemsToDelete, item.ID)
 		summary.DeletedItemDetails = append(summary.DeletedItemDetails,
-			fmt.Sprintf("%s(%d): %s via %s(%d)", group.Name, group.ID, item.ModelName, channel.Name, channel.ID))
-		appendAutoHealthCheckLog("warn", "分组渠道不可用，已标记删除", strings.Join([]string{currentItem, checkResultsDetail(results, keyLabels)}, "\n"))
-		updateAutoHealthCheckProgress("checking_group_item", "分组渠道不可用，已标记删除", currentItem, *summary)
-	}
-
-	if len(itemsToDelete) > 0 {
-		updateAutoHealthCheckProgress("checking_group", "正在删除不可用的分组渠道...", currentGroup, *summary)
-		if err := op.GroupItemBatchDel(group.ID, itemsToDelete, ctx); err != nil {
-			errText := fmt.Sprintf("delete group %d items: %v", group.ID, err)
-			summary.Errors = append(summary.Errors, errText)
-			appendAutoHealthCheckLog("error", "删除不可用分组渠道失败", errText)
-			return
-		}
-		summary.DeletedGroupItems += len(itemsToDelete)
-		appendAutoHealthCheckLog("warn", fmt.Sprintf("已删除 %d 个不可用分组渠道", len(itemsToDelete)), currentGroup)
+			fmt.Sprintf("%s(%d): %s via %s(%d)，需要手动处理", group.Name, group.ID, item.ModelName, channel.Name, channel.ID))
+		appendAutoHealthCheckLog("warn", "分组渠道不可用，请手动处理", strings.Join([]string{currentItem, checkResultsDetail(results, keyLabels)}, "\n"))
+		updateAutoHealthCheckProgress("checking_group_item", "分组渠道不可用，请手动处理", currentItem, *summary)
 	}
 	updateAutoHealthCheckProgress("checking_group", "分组渠道检测完成", currentGroup, *summary)
 }
@@ -995,15 +984,15 @@ func (s autoHealthCheckSummary) dingTalkContent() string {
 		b.WriteString(fmt.Sprintf("耗时: %s\n", s.FinishedAt.Sub(s.StartedAt).Round(time.Second)))
 	}
 	b.WriteString(fmt.Sprintf("渠道: 检测 %d, 跳过 %d, 禁用 %d\n", s.CheckedChannels, s.SkippedChannels, s.DisabledChannels))
-	b.WriteString(fmt.Sprintf("Key: 检测 %d, 删除 %d\n", s.CheckedKeys, s.DeletedKeys))
+	b.WriteString(fmt.Sprintf("Key: 检测 %d, 禁用 %d\n", s.CheckedKeys, s.DisabledKeys))
 	if s.RecoveryCheckItems > 0 || s.RecoveredGroupItems > 0 {
 		b.WriteString(fmt.Sprintf("恢复探测: 检测 %d, 恢复 %d\n", s.RecoveryCheckItems, s.RecoveredGroupItems))
 	}
 	if len(s.DisabledDetails) > 0 {
 		appendLimitedLines(&b, "禁用渠道", s.DisabledDetails)
 	}
-	if len(s.DeletedKeyDetails) > 0 {
-		appendLimitedLines(&b, "删除 Key", s.DeletedKeyDetails)
+	if len(s.DisabledKeyDetails) > 0 {
+		appendLimitedLines(&b, "禁用 Key", s.DisabledKeyDetails)
 	}
 	if len(s.Errors) > 0 {
 		appendLimitedLines(&b, "异常", s.Errors)

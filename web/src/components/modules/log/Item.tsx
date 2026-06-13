@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Clock, Cpu, Zap, AlertCircle, ArrowDownToLine, ArrowUpFromLine, DollarSign, ArrowRight, ArrowDown, Send, MessageSquare, Loader2, RotateCw, ChevronDown, ChevronUp, Pin, KeyRound } from 'lucide-react';
+import { Clock, Cpu, Zap, AlertCircle, ArrowDownToLine, ArrowUpFromLine, ArrowRight, ArrowDown, Send, MessageSquare, Loader2, RotateCw, ChevronDown, ChevronUp, Pin, KeyRound } from 'lucide-react';
 import { useTranslations } from '@/lib/translations';
 import { motion, AnimatePresence } from 'motion/react';
 import JsonView from '@uiw/react-json-view';
@@ -266,12 +266,6 @@ function LogCardContent({ log }: { log: RelayLog }) {
                                     <ArrowUpFromLine className="size-3.5 shrink-0 text-purple-500" />
                                     <span>{t('output')} {detailLog.output_tokens.toLocaleString()}</span>
                                 </div>
-                                <div className="flex items-center gap-1.5">
-                                    <DollarSign className="size-3.5 shrink-0 text-emerald-500" />
-                                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                                        {t('cost')} {Number(detailLog.cost).toFixed(6)}
-                                    </span>
-                                </div>
                             </div>
                             {hasError && (
                                 <div className="p-2.5 rounded-xl bg-destructive/10 border border-destructive/20 overflow-hidden">
@@ -474,12 +468,6 @@ function LogCardContent({ log }: { log: RelayLog }) {
                             <div className="flex items-center gap-1.5">
                                 <Cpu className="size-3.5 text-blue-500" />
                                 <span>{t('totalTime')}: {formatDuration(detailLog.use_time)}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                                <DollarSign className="size-3.5 text-emerald-500" />
-                                <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                                    {t('cost')}: {Number(detailLog.cost).toFixed(6)}
-                                </span>
                             </div>
                         </div>
                     </MorphingDialogContent>

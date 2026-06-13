@@ -48,7 +48,7 @@
         "channel": "渠道",
         "group": "分组",
         "key": "密钥",
-        "model": "价格",
+        "autocheck": "自动检测",
         "log": "日志",
         "setting": "设置"
     },
@@ -69,6 +69,10 @@
                 "title": "筛选",
                 "channel": {
                     "all": "全部渠道",
+                    "needsAttention": "需要处理",
+                    "noAvailableKeys": "无可用 Key",
+                    "abnormalKeys": "检测异常",
+                    "autoCheckOff": "未开自动检测",
                     "enabled": "仅启用",
                     "disabled": "仅禁用"
                 },
@@ -221,13 +225,18 @@
                 "current": "当前",
                 "checkedChannels": "检测渠道",
                 "checkedKeys": "检测 Key",
-                "deletedKeys": "删除 Key",
+                "disabledKeys": "禁用 Key",
                 "disabledChannels": "禁用渠道",
                 "startedAt": "开始时间",
                 "finishedAt": "结束时间",
                 "disabled": "禁用",
-                "deletedKey": "删 Key",
+                "disabledKey": "禁 Key",
+                "manualItem": "待处理",
                 "error": "异常"
+            },
+            "pending": {
+                "title": "待处理项",
+                "open": "打开"
             },
             "logs": {
                 "title": "运行日志",
@@ -538,6 +547,7 @@
         "card": {
             "requestCount": "请求次数",
             "totalCost": "总成本",
+            "availableKeys": "可用 {available}/{total}",
             "abnormalKeys": "{count} 个异常 Key",
             "invalidKeys": "{count} 个失效 Key",
             "toast": {
@@ -609,6 +619,7 @@
             "previewModelCount": "模型",
             "emptyTags": "清空标签",
             "allTags": "全部标签",
+            "untagged": "无标签",
             "tagsPlaceholder": "多个标签用逗号分隔，留空表示清空标签",
             "tagsSearchPlaceholder": "搜索或创建标签",
             "tagsEmptyHint": "勾选后不选择标签，将清空这些渠道的标签"
@@ -662,6 +673,22 @@
                 "groupRateLimited": "429 限速",
                 "groupServer": "5xx 服务异常",
                 "groupOther": "其他异常",
+                "filterAll": "全部",
+                "filterEnabled": "启用",
+                "filterDisabled": "禁用",
+                "filterAttention": "需处理",
+                "filterInvalid": "401/403",
+                "filterEmpty": "当前筛选没有匹配的 Key",
+                "lastChecked": "上次检测",
+                "state": {
+                    "ok": "正常",
+                    "disabled": "已禁用",
+                    "invalid": "认证失败",
+                    "rate-limited": "限速",
+                    "server-error": "服务异常",
+                    "failed": "异常",
+                    "unchecked": "未检测"
+                },
                 "sorted": "排序已保存",
                 "sortFailed": "排序保存失败"
             },

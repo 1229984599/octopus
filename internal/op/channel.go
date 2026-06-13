@@ -363,6 +363,25 @@ func ChannelKeysDelete(channelID int, keyIDs []int, ctx context.Context) error {
 	return nil
 }
 
+func ChannelKeysEnabled(channelID int, keyIDs []int, enabled bool, ctx context.Context) error {
+	if len(keyIDs) == 0 {
+		return nil
+	}
+	if _, ok := channelCache.Get(channelID); !ok {
+		return fmt.Errorf("channel not found")
+	}
+	if err := db.GetDB().WithContext(ctx).
+		Model(&model.ChannelKey{}).
+		Where("id IN ? AND channel_id = ?", keyIDs, channelID).
+		Update("enabled", enabled).Error; err != nil {
+		return fmt.Errorf("failed to update channel keys enabled: %w", err)
+	}
+	if err := channelRefreshCacheByID(channelID, ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
 func ChannelRefreshCacheByID(id int, ctx context.Context) error {
 	return channelRefreshCacheByID(id, ctx)
 }

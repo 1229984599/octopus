@@ -48,6 +48,7 @@ export interface AutoHealthCheckSummary {
     skipped_channels: number;
     checked_keys: number;
     deleted_keys: number;
+    disabled_keys: number;
     disabled_channels: number;
     checked_groups: number;
     skipped_groups: number;
@@ -55,6 +56,7 @@ export interface AutoHealthCheckSummary {
     skipped_group_items: number;
     deleted_group_items: number;
     deleted_key_details: string[];
+    disabled_key_details: string[];
     disabled_details: string[];
     deleted_item_details: string[];
     errors: string[];

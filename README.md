@@ -15,7 +15,7 @@
 
 - 🔀 **Multi-Channel Aggregation** - Connect multiple LLM provider channels with unified management
 - 🔑 **Multi-Key Support** - Support multiple API keys per channel with round-robin, random, failover, and weighted routing
-- 🩺 **Health Checks** - Manually or automatically check channel keys, remove invalid keys, and re-enable recovered channels
+- 🩺 **Health Checks** - Manually or automatically check channel keys, disable invalid keys, and re-enable recovered channels
 - 🚦 **Channel RPM Limit** - Share a channel-level RPM limit between normal relay traffic and key checks
 - ⚡ **Smart Selection** - Multiple endpoints per channel, smart selection of the endpoint with the shortest delay
 - ⚖️ **Load Balancing** - Automatic request distribution for stable and efficient service
@@ -276,7 +276,7 @@ The program automatically appends API paths based on channel type. You only need
 - Key order can be adjusted by dragging, so failover and round-robin follow the configured top-to-bottom order.
 - Key checks support searchable model selection, batch delete, batch disable, and detailed error inspection.
 - Check results are written back to the channel key status. If any key checks successfully, the channel is enabled automatically.
-- `401` / `403` keys can be removed directly. Temporary upstream failures can disable the channel until a later successful check re-enables it.
+- `401` / `403` keys can be disabled by automatic checks and removed manually. Temporary upstream failures can disable the channel until a later successful check re-enables it.
 - Channel-level `RPM` limits relay requests and key checks together. `0` means unlimited.
 - Image-generation models use a low-cost auth/model-list style check by default instead of generating an image. A real image-generation check is a separate explicit action and warns that upstream cost may be incurred.
 
@@ -350,7 +350,7 @@ Since the program handles numerous statistics, writing to the database on every 
 - Scheduled health checks use cron expressions, with manual run and cancel support.
 - Checks run in the background and show live progress plus detailed runtime logs.
 - The scheduled task checks channels and channel keys only, avoiding repeated checks through groups.
-- `401` / `403` keys are deleted automatically. Temporary server-side failures can disable a channel.
+- `401` / `403` keys are disabled automatically and can be deleted manually. Temporary server-side failures can disable a channel.
 - Scheduled checks do not perform real image generation by default, so image model checks remain low-cost unless a user explicitly runs a real image check.
 - DingTalk robot notifications support webhook and signed secret configuration, including a test button in settings.
 

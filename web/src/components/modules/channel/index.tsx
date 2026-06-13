@@ -45,6 +45,7 @@ import { cn } from '@/lib/utils';
 import { AlertTriangle, Check, CheckSquare, Edit3, Plus, Search, Tags, Trash2, X } from 'lucide-react';
 import { useTranslations } from '@/lib/translations';
 import { useChannelNavigationStore } from './navigation-store';
+import { getChannelHealth } from './health';
 
 type ChannelListItem = {
     raw: ChannelType;
@@ -122,10 +123,16 @@ export function Channel() {
 
         const byTag = selectedTag === 'all'
             ? bySearch
-            : bySearch.filter((c) => (c.raw.tags ?? []).includes(selectedTag));
+            : selectedTag === '__untagged__'
+                ? bySearch.filter((c) => (c.raw.tags ?? []).filter((tag) => tag.trim()).length === 0)
+                : bySearch.filter((c) => (c.raw.tags ?? []).includes(selectedTag));
 
         if (filter === 'enabled') return byTag.filter((c) => c.raw.enabled);
         if (filter === 'disabled') return byTag.filter((c) => !c.raw.enabled);
+        if (filter === 'needs-attention') return byTag.filter((c) => getChannelHealth(c.raw).needsAttention);
+        if (filter === 'no-available-keys') return byTag.filter((c) => getChannelHealth(c.raw).availableKeys === 0);
+        if (filter === 'abnormal-keys') return byTag.filter((c) => getChannelHealth(c.raw).abnormalKeys > 0);
+        if (filter === 'auto-check-off') return byTag.filter((c) => !c.raw.auto_check);
 
         return byTag;
     }, [sortedChannels, searchTerm, filter, selectedTag]);
@@ -165,7 +172,7 @@ export function Channel() {
     }, [channelsData]);
 
     useEffect(() => {
-        if (selectedTag === 'all') return;
+        if (selectedTag === 'all' || selectedTag === '__untagged__') return;
         if (!availableTags.includes(selectedTag)) deferStateUpdate(() => setSelectedTag('all'));
     }, [availableTags, selectedTag]);
 
@@ -300,7 +307,7 @@ export function Channel() {
                 </div>
             </div>
 
-            {availableTags.length > 0 && (
+            {sortedChannels.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card/60 p-2">
                     <button
                         type="button"
@@ -313,6 +320,18 @@ export function Channel() {
                         )}
                     >
                         {t('allTags')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSelectedTag((prev) => (prev === '__untagged__' ? 'all' : '__untagged__'))}
+                        className={cn(
+                            'inline-flex h-7 items-center rounded-md border px-2 text-xs transition-colors',
+                            selectedTag === '__untagged__'
+                                ? 'border-primary bg-primary text-primary-foreground'
+                                : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        {t('untagged')}
                     </button>
                     {availableTags.map((tag) => (
                         <button
@@ -767,31 +786,15 @@ function BatchEditDialog({
 
 function BatchDeletePreview({ channels }: { channels: ChannelType[] }) {
     const t = useTranslations('channel.batch');
-    const keyCount = channels.reduce((sum, channel) => sum + channel.keys.length, 0);
-    const modelCount = channels.reduce((sum, channel) => {
-        const models = `${channel.model},${channel.custom_model}`
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean);
-        return sum + new Set(models).size;
-    }, 0);
 
     if (channels.length === 0) return null;
 
     return (
         <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-3 text-sm">
-            <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-background/70 p-3 text-center">
                 <div>
                     <div className="text-lg font-semibold">{channels.length}</div>
                     <div className="text-xs text-muted-foreground">{t('previewChannelCount')}</div>
-                </div>
-                <div>
-                    <div className="text-lg font-semibold">{keyCount}</div>
-                    <div className="text-xs text-muted-foreground">{t('previewKeyCount')}</div>
-                </div>
-                <div>
-                    <div className="text-lg font-semibold">{modelCount}</div>
-                    <div className="text-xs text-muted-foreground">{t('previewModelCount')}</div>
                 </div>
             </div>
             <div className="mt-3 max-h-28 space-y-1 overflow-y-auto rounded-xl bg-background/70 p-2 text-xs text-muted-foreground">

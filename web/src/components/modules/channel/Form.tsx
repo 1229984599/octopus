@@ -1,5 +1,5 @@
 import { AutoGroupType, ChannelType, GroupMode, type Channel, type ChannelKeyCheckResult, useChannelList, useCheckChannelKeys, useFetchModel, useUpdateChannel } from '@/api/endpoints/channel';
-import { cn, formatMoney } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import {
     Select,
     SelectContent,
@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ban, Check, GripVertical, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CheckResultDetail } from '@/components/common/CheckResultDetail';
+import { getKeyHealth, keyNeedsAttention, type KeyHealthState } from './health';
 
 export interface ChannelKeyFormItem {
     id?: number;
@@ -48,6 +49,25 @@ function isImageChannelType(type: ChannelType): boolean {
 
 function deferStateUpdate(update: () => void) {
     queueMicrotask(update);
+}
+
+type KeyFilter = 'all' | 'enabled' | 'disabled' | 'attention' | 'invalid';
+
+function KeyStateBadge({ state, label }: { state: KeyHealthState; label: (key: string) => string }) {
+    const tone = state === 'ok'
+        ? 'bg-green-500/15 text-green-700 dark:text-green-400'
+        : state === 'unchecked'
+            ? 'bg-muted text-muted-foreground'
+            : state === 'disabled'
+                ? 'bg-slate-500/15 text-slate-600 dark:text-slate-300'
+                : state === 'rate-limited'
+                    ? 'bg-orange-500/15 text-orange-700 dark:text-orange-400'
+                    : 'bg-red-500/15 text-red-700 dark:text-red-400';
+    return (
+        <Badge variant="secondary" className={cn('h-5 px-1.5 text-[10px]', tone)}>
+            {label(`state.${state}`)}
+        </Badge>
+    );
 }
 
 export interface ChannelFormData {
@@ -155,6 +175,7 @@ export function ChannelForm({
     const [modelSearch, setModelSearch] = useState('');
     const [modelPopoverOpen, setModelPopoverOpen] = useState(false);
     const [checkResults, setCheckResults] = useState<Record<number, ChannelKeyCheckResult>>({});
+    const [keyFilter, setKeyFilter] = useState<KeyFilter>('all');
     const inputRef = useRef<HTMLInputElement>(null);
 
     const fetchModel = useFetchModel();
@@ -231,6 +252,29 @@ export function ChannelForm({
             .map((key) => key.id as number),
         [formData.keys]
     );
+    const visibleKeys = useMemo(() => {
+        return (formData.keys ?? [])
+            .map((key, index) => ({ key, index }))
+            .filter(({ key }) => {
+                if (keyFilter === 'enabled') return key.enabled;
+                if (keyFilter === 'disabled') return !key.enabled;
+                if (keyFilter === 'attention') return keyNeedsAttention({
+                    enabled: key.enabled,
+                    channel_key: key.channel_key,
+                    status_code: key.status_code ?? 0,
+                    last_use_time_stamp: key.last_use_time_stamp ?? 0,
+                });
+                if (keyFilter === 'invalid') return key.status_code === 401 || key.status_code === 403;
+                return true;
+            });
+    }, [formData.keys, keyFilter]);
+    const keyFilterOptions: Array<{ value: KeyFilter; label: string; count: number }> = [
+        { value: 'all', label: keyT('filterAll'), count: formData.keys.length },
+        { value: 'enabled', label: keyT('filterEnabled'), count: formData.keys.filter((key) => key.enabled).length },
+        { value: 'disabled', label: keyT('filterDisabled'), count: formData.keys.filter((key) => !key.enabled).length },
+        { value: 'attention', label: keyT('filterAttention'), count: formData.keys.filter((key) => keyNeedsAttention({ enabled: key.enabled, channel_key: key.channel_key, status_code: key.status_code ?? 0, last_use_time_stamp: key.last_use_time_stamp ?? 0 })).length },
+        { value: 'invalid', label: keyT('filterInvalid'), count: invalidKeyIds.length },
+    ];
     const updateModels = (nextAuto: string[], nextCustom: string[]) => {
         const model = nextAuto.join(',');
         const custom_model = nextCustom.join(',');
@@ -693,30 +737,29 @@ export function ChannelForm({
             </div>
 
             <div className="space-y-2">
-                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                    <label className="text-sm font-medium text-card-foreground">
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-muted/20 p-2">
+                    <label className="mr-auto min-w-fit text-sm font-medium text-card-foreground">
                         {t('apiKey')} {formData.keys.length > 0 ? `(${formData.keys.length})` : ''}
                     </label>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Select
-                            value={String(formData.key_mode)}
-                            onValueChange={(value) => onFormDataChange({ ...formData, key_mode: Number(value) as GroupMode })}
-                        >
-                            <SelectTrigger className="h-7 w-28 rounded-lg border-border px-2 text-xs">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="rounded-xl">
-                                <SelectItem className="rounded-xl" value={String(GroupMode.RoundRobin)}>{t('keyModeRoundRobin')}</SelectItem>
-                                <SelectItem className="rounded-xl" value={String(GroupMode.Random)}>{t('keyModeRandom')}</SelectItem>
-                                <SelectItem className="rounded-xl" value={String(GroupMode.Failover)}>{t('keyModeFailover')}</SelectItem>
-                                <SelectItem className="rounded-xl" value={String(GroupMode.Weighted)}>{t('keyModeWeighted')}</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        {canManageExistingKeys && (
-                            <>
-                                <Popover open={modelPopoverOpen} onOpenChange={setModelPopoverOpen}>
+                    <Select
+                        value={String(formData.key_mode)}
+                        onValueChange={(value) => onFormDataChange({ ...formData, key_mode: Number(value) as GroupMode })}
+                    >
+                        <SelectTrigger className="h-8 w-32 rounded-lg border-border px-2 text-xs">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                            <SelectItem className="rounded-xl" value={String(GroupMode.RoundRobin)}>{t('keyModeRoundRobin')}</SelectItem>
+                            <SelectItem className="rounded-xl" value={String(GroupMode.Random)}>{t('keyModeRandom')}</SelectItem>
+                            <SelectItem className="rounded-xl" value={String(GroupMode.Failover)}>{t('keyModeFailover')}</SelectItem>
+                            <SelectItem className="rounded-xl" value={String(GroupMode.Weighted)}>{t('keyModeWeighted')}</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    {canManageExistingKeys && (
+                        <>
+                            <Popover open={modelPopoverOpen} onOpenChange={setModelPopoverOpen}>
                                     <PopoverTrigger asChild>
-                                        <Button type="button" variant="outline" size="sm" className="h-7 max-w-44 rounded-lg px-2 text-xs">
+                                        <Button type="button" variant="outline" size="sm" className="h-8 max-w-56 rounded-lg px-2 text-xs">
                                             <span className="truncate">{activeCheckModel || keyT('model')}</span>
                                         </Button>
                                     </PopoverTrigger>
@@ -747,215 +790,238 @@ export function ChannelForm({
                                             )}
                                         </div>
                                     </PopoverContent>
-                                </Popover>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={checkChannelKeys.isPending || checkableExistingKeyIds.length === 0}
-                                    onClick={() => handleCheckKeys()}
-                                    className="h-7 rounded-lg px-2 text-xs"
-                                >
-                                    <RefreshCw className={cn("size-3.5", checkChannelKeys.isPending && "animate-spin")} />
-                                    {keyT('all')}
-                                </Button>
+                            </Popover>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={checkChannelKeys.isPending || checkableExistingKeyIds.length === 0}
+                                onClick={() => handleCheckKeys()}
+                                className="h-8 rounded-lg px-2 text-xs"
+                            >
+                                <RefreshCw className={cn("size-3.5", checkChannelKeys.isPending && "animate-spin")} />
+                                {keyT('all')}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={checkChannelKeys.isPending || selectedCheckableKeyIds.length === 0}
+                                onClick={() => handleCheckKeys(selectedCheckableKeyIds)}
+                                className="h-8 rounded-lg px-2 text-xs"
+                            >
+                                {keyT('selected')}
+                            </Button>
+                            {isImageCheckModel && (
                                 <Button
                                     type="button"
                                     variant="outline"
                                     size="sm"
                                     disabled={checkChannelKeys.isPending || selectedCheckableKeyIds.length === 0}
-                                    onClick={() => handleCheckKeys(selectedCheckableKeyIds)}
-                                    className="h-7 rounded-lg px-2 text-xs"
+                                    onClick={() => handleCheckKeys(selectedCheckableKeyIds, 'real_image_generation')}
+                                    className="h-8 rounded-lg px-2 text-xs text-orange-600"
                                 >
-                                    {keyT('selected')}
+                                    真实生图检测
                                 </Button>
-                                {isImageCheckModel && (
-                                    <>
-                                        <span className="max-w-52 text-[10px] leading-4 text-muted-foreground">
-                                            图片模型默认仅鉴权检测
-                                        </span>
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            disabled={checkChannelKeys.isPending || selectedCheckableKeyIds.length === 0}
-                                            onClick={() => handleCheckKeys(selectedCheckableKeyIds, 'real_image_generation')}
-                                            className="h-7 rounded-lg px-2 text-xs text-orange-600"
-                                        >
-                                            真实生图检测
-                                        </Button>
-                                    </>
-                                )}
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={updateChannel.isPending || selectedKeyIdArray.length === 0}
-                                    onClick={() => handleDisableKeys(selectedKeyIdArray)}
-                                    className="h-7 rounded-lg px-2 text-xs"
-                                >
-                                    <Ban className="size-3.5" />
-                                    {keyT('disableSelected')}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={updateChannel.isPending || statusFailedKeyIds.length === 0}
-                                    onClick={() => handleDisableKeys(statusFailedKeyIds)}
-                                    className="h-7 rounded-lg px-2 text-xs"
-                                >
-                                    {keyT('disableFailedKeys')}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="destructive"
-                                    size="sm"
-                                    disabled={updateChannel.isPending || selectedKeyIdArray.length === 0}
-                                    onClick={() => handleDeleteKeys(selectedKeyIdArray)}
-                                    className="h-7 rounded-lg px-2 text-xs"
-                                >
-                                    <Trash2 className="size-3.5" />
-                                    {keyT('deleteSelected')}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="destructive"
-                                    size="sm"
-                                    disabled={updateChannel.isPending || invalidKeyIds.length === 0}
-                                    onClick={() => handleDeleteKeys(invalidKeyIds)}
-                                    className="h-7 rounded-lg px-2 text-xs"
-                                >
-                                    {keyT('deleteInvalid')}
-                                </Button>
-                            </>
-                        )}
-                        <Button
+                            )}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={updateChannel.isPending || selectedKeyIdArray.length === 0}
+                                onClick={() => handleDisableKeys(selectedKeyIdArray)}
+                                className="h-8 rounded-lg px-2 text-xs"
+                            >
+                                <Ban className="size-3.5" />
+                                {keyT('disableSelected')}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={updateChannel.isPending || statusFailedKeyIds.length === 0}
+                                onClick={() => handleDisableKeys(statusFailedKeyIds)}
+                                className="h-8 rounded-lg px-2 text-xs"
+                            >
+                                {keyT('disableFailedKeys')}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                disabled={updateChannel.isPending || selectedKeyIdArray.length === 0}
+                                onClick={() => handleDeleteKeys(selectedKeyIdArray)}
+                                className="h-8 rounded-lg px-2 text-xs"
+                            >
+                                <Trash2 className="size-3.5" />
+                                {keyT('deleteSelected')}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                disabled={updateChannel.isPending || invalidKeyIds.length === 0}
+                                onClick={() => handleDeleteKeys(invalidKeyIds)}
+                                className="h-8 rounded-lg px-2 text-xs"
+                            >
+                                {keyT('deleteInvalid')}
+                            </Button>
+                            {isImageCheckModel && (
+                                <span className="basis-full text-[10px] leading-4 text-muted-foreground sm:basis-auto">
+                                    图片模型默认仅鉴权检测
+                                </span>
+                            )}
+                        </>
+                    )}
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleAddKey}
+                        className="h-8 rounded-lg px-2 text-xs text-muted-foreground/80 hover:text-muted-foreground"
+                    >
+                        <Plus className="h-3 w-3 mr-1" />
+                        {t('add')}
+                    </Button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 rounded-xl border border-border/60 bg-muted/20 p-1.5">
+                    {keyFilterOptions.map((option) => (
+                        <button
+                            key={option.value}
                             type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleAddKey}
-                            className="h-6 px-2 text-xs text-muted-foreground/70 hover:text-muted-foreground hover:bg-transparent"
+                            onClick={() => setKeyFilter(option.value)}
+                            className={cn(
+                                'inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-xs transition-colors',
+                                keyFilter === option.value
+                                    ? 'border-primary bg-primary text-primary-foreground'
+                                    : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                            )}
                         >
-                            <Plus className="h-3 w-3 mr-1" />
-                            {t('add')}
-                        </Button>
-                    </div>
+                            <span>{option.label}</span>
+                            <span className="tabular-nums opacity-80">{option.count}</span>
+                        </button>
+                    ))}
                 </div>
                 <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
-                    {(formData.keys ?? []).map((k, idx) => (
+                    {visibleKeys.map(({ key: k, index: idx }) => (
                         <div
                             key={k.id ?? `new-${idx}`}
                             onDragOver={(event) => event.preventDefault()}
                             onDrop={() => handleDropKey(idx)}
                             className={cn(
-                                "grid grid-cols-[auto_auto_1fr_auto] gap-2 rounded-xl border border-border/40 bg-background/60 p-2 transition-colors md:grid-cols-[auto_auto_auto_minmax(220px,1fr)_minmax(120px,180px)_auto_auto_auto] md:items-center",
+                                "flex flex-col gap-2 rounded-xl border border-border/40 bg-background/60 p-2 transition-colors",
                                 draggedKeyIndex === idx ? "opacity-60" : "hover:bg-muted/30"
                             )}
                         >
-                            <div className="col-span-3 flex min-w-0 items-center gap-2 md:col-span-3">
-                                <span
-                                    draggable={(formData.keys ?? []).length > 1}
-                                    onDragStart={() => setDraggedKeyIndex(idx)}
-                                    onDragEnd={() => setDraggedKeyIndex(null)}
-                                    className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-lg text-muted-foreground hover:bg-muted active:cursor-grabbing"
-                                    title={t('priority')}
-                                >
-                                    <GripVertical className="h-4 w-4" />
-                                </span>
-                                <span className="flex h-8 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-medium text-muted-foreground">
-                                    {idx + 1}
-                                </span>
-                                {canManageExistingKeys && typeof k.id === 'number' && (
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedKeyIds.has(k.id)}
-                                        onChange={(event) => toggleKeySelection(k.id as number, event.target.checked)}
-                                        className="size-4 shrink-0 rounded border-border"
-                                    />
-                                )}
-                            </div>
-                            <div className="col-start-4 row-start-1 flex items-center justify-end gap-2 md:col-start-auto md:row-start-auto">
-                                <Switch
-                                    checked={k.enabled}
-                                    onCheckedChange={(checked) => handleUpdateKey(idx, { enabled: checked })}
-                                />
-                            </div>
-                            <Input
-                                type="text"
-                                value={k.channel_key}
-                                onChange={(e) => handleUpdateKey(idx, { channel_key: e.target.value })}
-                                placeholder={t('apiKey')}
-                                required={idx === 0}
-                                className="col-span-4 rounded-xl font-mono text-sm md:col-span-1 md:min-w-0"
-                            />
-                            <Input
-                                type="text"
-                                value={k.remark ?? ''}
-                                onChange={(e) => handleUpdateKey(idx, { remark: e.target.value })}
-                                placeholder={t('remark')}
-                                className={cn(
-                                    "col-span-4 rounded-xl md:col-span-1 md:min-w-0",
-                                    showKeyWeight ? "sm:col-span-3" : "sm:col-span-4"
-                                )}
-                            />
-                            {showKeyWeight && (
-                                <Input
-                                    type="number"
-                                    min={1}
-                                    step={1}
-                                    value={String(k.weight ?? 1)}
-                                    onChange={(e) => handleUpdateKey(idx, { weight: Math.max(1, Number.parseInt(e.target.value, 10) || 1) })}
-                                    title={t('weight')}
-                                    className="col-span-4 rounded-xl sm:col-span-1 md:col-span-1 md:w-20"
-                                />
-                            )}
-                            <div className="col-span-3 flex min-w-0 flex-wrap items-center gap-1.5 md:col-span-1 md:flex-nowrap md:justify-end">
-                                {typeof k.status_code === 'number' && (k.status_code !== 0 || Boolean(k.last_use_time_stamp)) && (
-                                    <Badge
-                                        variant="secondary"
-                                        className={cn(
-                                            "h-5 px-1.5 text-[10px]",
-                                            k.status_code === 200
-                                                ? "bg-green-500/15 text-green-700 dark:text-green-400"
-                                                : k.status_code === 401 ||
-                                                    k.status_code === 403 ||
-                                                    k.status_code === 429 ||
-                                                    k.status_code >= 500
-                                                    ? "bg-red-500/15 text-red-700 dark:text-red-400"
-                                                    : "bg-orange-500/15 text-orange-700 dark:text-orange-400"
-                                        )}
+                            <div className="flex min-w-0 items-center justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <span
+                                        draggable={(formData.keys ?? []).length > 1}
+                                        onDragStart={() => setDraggedKeyIndex(idx)}
+                                        onDragEnd={() => setDraggedKeyIndex(null)}
+                                        className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-lg text-muted-foreground hover:bg-muted active:cursor-grabbing"
+                                        title={t('priority')}
                                     >
-                                        {k.status_code}
-                                    </Badge>
-                                )}
-                                {typeof k.id === 'number' && checkResults[k.id] && (
-                                    <CheckResultDetail
-                                        ok={checkResults[k.id].ok}
-                                        label={checkResults[k.id].ok ? keyT('ok') : keyT('bad')}
-                                        detail={[checkResults[k.id].note, checkResults[k.id].strategy ? `检测方式: ${checkResults[k.id].strategy}` : '', checkResults[k.id].error].filter(Boolean).join('\n')}
+                                        <GripVertical className="h-4 w-4" />
+                                    </span>
+                                    <span className="flex h-8 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-medium text-muted-foreground">
+                                        {idx + 1}
+                                    </span>
+                                    {canManageExistingKeys && typeof k.id === 'number' && (
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedKeyIds.has(k.id)}
+                                            onChange={(event) => toggleKeySelection(k.id as number, event.target.checked)}
+                                            className="size-4 shrink-0 rounded border-border"
+                                        />
+                                    )}
+                                </div>
+                                <div className="flex min-w-0 shrink-0 items-center gap-1.5">
+                                    <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+                                        <KeyStateBadge state={getKeyHealth({ enabled: k.enabled, channel_key: k.channel_key, status_code: k.status_code ?? 0, last_use_time_stamp: k.last_use_time_stamp ?? 0 })} label={keyT} />
+                                        {typeof k.status_code === 'number' && (k.status_code !== 0 || Boolean(k.last_use_time_stamp)) && (
+                                            <Badge
+                                                variant="secondary"
+                                                className={cn(
+                                                    "h-5 px-1.5 text-[10px]",
+                                                    k.status_code === 200
+                                                        ? "bg-green-500/15 text-green-700 dark:text-green-400"
+                                                        : k.status_code === 401 ||
+                                                            k.status_code === 403 ||
+                                                            k.status_code === 429 ||
+                                                            k.status_code >= 500
+                                                            ? "bg-red-500/15 text-red-700 dark:text-red-400"
+                                                            : "bg-orange-500/15 text-orange-700 dark:text-orange-400"
+                                                )}
+                                            >
+                                                {k.status_code}
+                                            </Badge>
+                                        )}
+                                        {typeof k.id === 'number' && checkResults[k.id] && (
+                                            <CheckResultDetail
+                                                ok={checkResults[k.id].ok}
+                                                label={checkResults[k.id].ok ? keyT('ok') : keyT('bad')}
+                                                detail={[checkResults[k.id].note, checkResults[k.id].strategy ? `检测方式: ${checkResults[k.id].strategy}` : '', checkResults[k.id].error].filter(Boolean).join('\n')}
+                                            />
+                                        )}
+                                        {Boolean(k.last_use_time_stamp) && (
+                                            <span className="hidden max-w-48 truncate text-[10px] text-muted-foreground md:inline" title={`${keyT('lastChecked')}: ${new Date((k.last_use_time_stamp ?? 0) * 1000).toLocaleString()}`}>
+                                                {keyT('lastChecked')}: {new Date((k.last_use_time_stamp ?? 0) * 1000).toLocaleString()}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <Switch
+                                        checked={k.enabled}
+                                        onCheckedChange={(checked) => handleUpdateKey(idx, { enabled: checked })}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleRemoveKey(idx)}
+                                        disabled={(formData.keys ?? []).length <= 1}
+                                        className="h-8 w-8 rounded-xl p-0 text-muted-foreground hover:bg-transparent hover:text-destructive disabled:opacity-40"
+                                        title="Remove"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className={cn("grid gap-2", showKeyWeight ? "md:grid-cols-[1fr_180px_90px]" : "md:grid-cols-[1fr_220px]") }>
+                                <Input
+                                    type="text"
+                                    value={k.channel_key}
+                                    onChange={(e) => handleUpdateKey(idx, { channel_key: e.target.value })}
+                                    placeholder={t('apiKey')}
+                                    required={idx === 0}
+                                    className="min-w-0 rounded-xl font-mono text-sm"
+                                />
+                                <Input
+                                    type="text"
+                                    value={k.remark ?? ''}
+                                    onChange={(e) => handleUpdateKey(idx, { remark: e.target.value })}
+                                    placeholder={t('remark')}
+                                    className="min-w-0 rounded-xl"
+                                />
+                                {showKeyWeight && (
+                                    <Input
+                                        type="number"
+                                        min={1}
+                                        step={1}
+                                        value={String(k.weight ?? 1)}
+                                        onChange={(e) => handleUpdateKey(idx, { weight: Math.max(1, Number.parseInt(e.target.value, 10) || 1) })}
+                                        title={t('weight')}
+                                        className="rounded-xl"
                                     />
                                 )}
-                                {typeof k.total_cost === 'number' && (
-                                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-                                        {formatMoney(k.total_cost).formatted.value}
-                                        {formatMoney(k.total_cost).formatted.unit}
-                                    </Badge>
-                                )}
                             </div>
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveKey(idx)}
-                                disabled={(formData.keys ?? []).length <= 1}
-                                className="col-start-4 row-start-4 h-8 w-8 justify-self-end rounded-xl p-0 text-muted-foreground hover:bg-transparent hover:text-destructive disabled:opacity-40 sm:row-start-3 md:col-start-auto md:row-start-auto md:justify-self-auto"
-                                title="Remove"
-                            >
-                                <X className="h-4 w-4" />
-                            </Button>
                         </div>
                     ))}
+                    {visibleKeys.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+                            {keyT('filterEmpty')}
+                        </div>
+                    )}
                 </div>
             </div>
 

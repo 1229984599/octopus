@@ -207,7 +207,7 @@ export function VirtualizedGrid<T>({
                                         {rowItems.map((item, columnIndex) => {
                                             const itemIndex = rowStartIndex + columnIndex;
                                             return (
-                                                <div key={String(getItemKey(item, itemIndex))} className="min-w-0">
+                                                <div key={String(getItemKey(item, itemIndex))} className="h-full min-w-0">
                                                     {renderItem(item, itemIndex)}
                                                 </div>
                                             );

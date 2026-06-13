@@ -10,7 +10,6 @@ import {
     Bot,
     ArrowUpFromLine,
     Rewind,
-    DollarSign,
     FastForward
 } from 'lucide-react';
 import { useTranslations } from '@/lib/translations';
@@ -47,28 +46,6 @@ export function Total() {
             ]
         },
         {
-            title: t('totalStats'),
-            headerIcon: ChartColumnBig,
-            items: [
-                {
-                    label: t('totalToken'),
-                    value: statsTotalFormatted?.total_token.formatted.value,
-                    icon: Bot,
-                    color: 'text-primary',
-                    bgColor: 'bg-chart-1/10',
-                    unit: statsTotalFormatted?.total_token.formatted.unit
-                },
-                {
-                    label: t('totalCost'),
-                    value: statsTotalFormatted?.total_cost.formatted.value,
-                    icon: DollarSign,
-                    color: 'text-primary',
-                    bgColor: 'bg-chart-2/10',
-                    unit: statsTotalFormatted?.total_cost.formatted.unit
-                }
-            ]
-        },
-        {
             title: t('inputStats'),
             headerIcon: ArrowDownToLine,
             items: [
@@ -79,14 +56,6 @@ export function Total() {
                     color: 'text-primary',
                     bgColor: 'bg-chart-3/10',
                     unit: statsTotalFormatted?.input_token.formatted.unit
-                },
-                {
-                    label: t('inputCost'),
-                    value: statsTotalFormatted?.input_cost.formatted.value,
-                    icon: DollarSign,
-                    color: 'text-primary',
-                    bgColor: 'bg-chart-3/10',
-                    unit: statsTotalFormatted?.input_cost.formatted.unit
                 }
             ]
         },
@@ -101,14 +70,20 @@ export function Total() {
                     color: 'text-primary',
                     bgColor: 'bg-chart-4/10',
                     unit: statsTotalFormatted?.output_token.formatted.unit
-                },
+                }
+            ]
+        },
+        {
+            title: t('totalStats'),
+            headerIcon: ChartColumnBig,
+            items: [
                 {
-                    label: t('outputCost'),
-                    value: statsTotalFormatted?.output_cost.formatted.value,
-                    icon: DollarSign,
+                    label: t('totalToken'),
+                    value: statsTotalFormatted?.total_token.formatted.value,
+                    icon: Bot,
                     color: 'text-primary',
-                    bgColor: 'bg-chart-4/10',
-                    unit: statsTotalFormatted?.output_cost.formatted.unit
+                    bgColor: 'bg-chart-1/10',
+                    unit: statsTotalFormatted?.total_token.formatted.unit
                 }
             ]
         }

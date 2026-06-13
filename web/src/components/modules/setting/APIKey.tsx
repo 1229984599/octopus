@@ -427,20 +427,6 @@ function APIKeyStatsCard({
                         </div>
                     </div>
                     <div className="rounded-lg bg-muted/40 p-3">
-                        <div className="text-xs text-muted-foreground">{t('apiKey.stats.inputCost')}</div>
-                        <div className="font-medium tabular-nums">
-                            {stats.input_cost.formatted.value}
-                            {stats.input_cost.formatted.unit}
-                        </div>
-                    </div>
-                    <div className="rounded-lg bg-muted/40 p-3">
-                        <div className="text-xs text-muted-foreground">{t('apiKey.stats.outputCost')}</div>
-                        <div className="font-medium tabular-nums">
-                            {stats.output_cost.formatted.value}
-                            {stats.output_cost.formatted.unit}
-                        </div>
-                    </div>
-                    <div className="rounded-lg bg-muted/40 p-3">
                         <div className="text-xs text-muted-foreground">{t('apiKey.stats.requestSuccess')}</div>
                         <div className="font-medium tabular-nums">
                             {stats.request_success.formatted.value}
