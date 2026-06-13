@@ -71,7 +71,7 @@ jobs:
 
       - name: Build
         run: |
-          sed -i 's/\r$//' scripts/build.sh scripts/updatePrice.py
+          sed -i 's/\r$//' scripts/build.sh
           bash scripts/build.sh release
 
       - name: Get latest tag
