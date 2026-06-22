@@ -239,6 +239,10 @@ func ChannelUpdate(req *model.ChannelUpdateRequest, ctx context.Context) (*model
 		selectFields = append(selectFields, "custom_header")
 		updates.CustomHeader = *req.CustomHeader
 	}
+	if req.DisguisePreset != nil {
+		selectFields = append(selectFields, "disguise_preset")
+		updates.DisguisePreset = strings.TrimSpace(*req.DisguisePreset)
+	}
 	if req.ChannelProxy != nil {
 		selectFields = append(selectFields, "channel_proxy")
 		updates.ChannelProxy = req.ChannelProxy

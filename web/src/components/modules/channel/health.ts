@@ -22,7 +22,7 @@ export function keyNeedsAttention(key: KeyLike): boolean {
 
 export function keyIsAvailable(key: KeyLike): boolean {
     const state = getKeyHealth(key);
-    return key.enabled && key.channel_key.trim() !== '' && state !== 'invalid';
+    return key.enabled && key.channel_key.trim() !== '' && (state === 'ok' || state === 'unchecked');
 }
 
 export function getChannelHealth(channel: Channel) {

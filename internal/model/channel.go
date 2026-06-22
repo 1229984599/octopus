@@ -31,27 +31,28 @@ const ChannelTypeDoubao llm.APIFormat = "doubao"
 var channelKeyRoundRobinCounter uint64
 
 type Channel struct {
-	ID            int            `json:"id" gorm:"primaryKey"`
-	Name          string         `json:"name" gorm:"unique;not null"`
-	Type          llm.APIFormat  `json:"type"`
-	Enabled       bool           `json:"enabled" gorm:"default:true"`
-	BaseUrls      []BaseUrl      `json:"base_urls" gorm:"serializer:json"`
-	Tags          []string       `json:"tags" gorm:"serializer:json"`
-	Keys          []ChannelKey   `json:"keys" gorm:"foreignKey:ChannelID"`
-	KeyMode       GroupMode      `json:"key_mode" gorm:"default:1"`
-	RPM           int            `json:"rpm" gorm:"default:0"`
-	Model         string         `json:"model"`
-	CustomModel   string         `json:"custom_model"`
-	CheckModel    string         `json:"check_model"`
-	Proxy         bool           `json:"proxy" gorm:"default:false"`
-	AutoSync      bool           `json:"auto_sync" gorm:"default:false"`
-	AutoCheck     bool           `json:"auto_check" gorm:"default:true"`
-	AutoGroup     AutoGroupType  `json:"auto_group" gorm:"default:0"`
-	CustomHeader  []CustomHeader `json:"custom_header" gorm:"serializer:json"`
-	ParamOverride *string        `json:"param_override"`
-	ChannelProxy  *string        `json:"channel_proxy"`
-	Stats         *StatsChannel  `json:"stats,omitempty" gorm:"foreignKey:ChannelID"`
-	MatchRegex    *string        `json:"match_regex"`
+	ID             int            `json:"id" gorm:"primaryKey"`
+	Name           string         `json:"name" gorm:"unique;not null"`
+	Type           llm.APIFormat  `json:"type"`
+	Enabled        bool           `json:"enabled" gorm:"default:true"`
+	BaseUrls       []BaseUrl      `json:"base_urls" gorm:"serializer:json"`
+	Tags           []string       `json:"tags" gorm:"serializer:json"`
+	Keys           []ChannelKey   `json:"keys" gorm:"foreignKey:ChannelID"`
+	KeyMode        GroupMode      `json:"key_mode" gorm:"default:1"`
+	RPM            int            `json:"rpm" gorm:"default:0"`
+	Model          string         `json:"model"`
+	CustomModel    string         `json:"custom_model"`
+	CheckModel     string         `json:"check_model"`
+	Proxy          bool           `json:"proxy" gorm:"default:false"`
+	AutoSync       bool           `json:"auto_sync" gorm:"default:false"`
+	AutoCheck      bool           `json:"auto_check" gorm:"default:true"`
+	AutoGroup      AutoGroupType  `json:"auto_group" gorm:"default:0"`
+	CustomHeader   []CustomHeader `json:"custom_header" gorm:"serializer:json"`
+	DisguisePreset string         `json:"disguise_preset,omitempty" gorm:"default:''"`
+	ParamOverride  *string        `json:"param_override"`
+	ChannelProxy   *string        `json:"channel_proxy"`
+	Stats          *StatsChannel  `json:"stats,omitempty" gorm:"foreignKey:ChannelID"`
+	MatchRegex     *string        `json:"match_regex"`
 }
 
 func (c *Channel) UnmarshalJSON(data []byte) error {
@@ -186,25 +187,26 @@ type ChannelKey struct {
 
 // ChannelUpdateRequest 渠道更新请求 - 仅包含变更的数据
 type ChannelUpdateRequest struct {
-	ID            int             `json:"id" binding:"required"`
-	Name          *string         `json:"name,omitempty"`
-	Type          *llm.APIFormat  `json:"type,omitempty"`
-	Enabled       *bool           `json:"enabled,omitempty"`
-	BaseUrls      *[]BaseUrl      `json:"base_urls,omitempty"`
-	Tags          *[]string       `json:"tags,omitempty"`
-	KeyMode       *GroupMode      `json:"key_mode,omitempty"`
-	RPM           *int            `json:"rpm,omitempty"`
-	Model         *string         `json:"model,omitempty"`
-	CustomModel   *string         `json:"custom_model,omitempty"`
-	CheckModel    *string         `json:"check_model,omitempty"`
-	Proxy         *bool           `json:"proxy,omitempty"`
-	AutoSync      *bool           `json:"auto_sync,omitempty"`
-	AutoCheck     *bool           `json:"auto_check,omitempty"`
-	AutoGroup     *AutoGroupType  `json:"auto_group,omitempty"`
-	CustomHeader  *[]CustomHeader `json:"custom_header,omitempty"`
-	ChannelProxy  *string         `json:"channel_proxy,omitempty"`
-	ParamOverride *string         `json:"param_override,omitempty"`
-	MatchRegex    *string         `json:"match_regex,omitempty"`
+	ID             int             `json:"id" binding:"required"`
+	Name           *string         `json:"name,omitempty"`
+	Type           *llm.APIFormat  `json:"type,omitempty"`
+	Enabled        *bool           `json:"enabled,omitempty"`
+	BaseUrls       *[]BaseUrl      `json:"base_urls,omitempty"`
+	Tags           *[]string       `json:"tags,omitempty"`
+	KeyMode        *GroupMode      `json:"key_mode,omitempty"`
+	RPM            *int            `json:"rpm,omitempty"`
+	Model          *string         `json:"model,omitempty"`
+	CustomModel    *string         `json:"custom_model,omitempty"`
+	CheckModel     *string         `json:"check_model,omitempty"`
+	Proxy          *bool           `json:"proxy,omitempty"`
+	AutoSync       *bool           `json:"auto_sync,omitempty"`
+	AutoCheck      *bool           `json:"auto_check,omitempty"`
+	AutoGroup      *AutoGroupType  `json:"auto_group,omitempty"`
+	CustomHeader   *[]CustomHeader `json:"custom_header,omitempty"`
+	DisguisePreset *string         `json:"disguise_preset,omitempty"`
+	ChannelProxy   *string         `json:"channel_proxy,omitempty"`
+	ParamOverride  *string         `json:"param_override,omitempty"`
+	MatchRegex     *string         `json:"match_regex,omitempty"`
 
 	KeysToAdd    []ChannelKeyAddRequest    `json:"keys_to_add,omitempty"`
 	KeysToUpdate []ChannelKeyUpdateRequest `json:"keys_to_update,omitempty"`
@@ -216,15 +218,17 @@ type ChannelBatchDeleteRequest struct {
 }
 
 type ChannelBatchUpdateRequest struct {
-	IDs       []int          `json:"ids" binding:"required"`
-	Enabled   *bool          `json:"enabled,omitempty"`
-	Tags      *[]string      `json:"tags,omitempty"`
-	KeyMode   *GroupMode     `json:"key_mode,omitempty"`
-	RPM       *int           `json:"rpm,omitempty"`
-	Proxy     *bool          `json:"proxy,omitempty"`
-	AutoSync  *bool          `json:"auto_sync,omitempty"`
-	AutoCheck *bool          `json:"auto_check,omitempty"`
-	AutoGroup *AutoGroupType `json:"auto_group,omitempty"`
+	IDs            []int           `json:"ids" binding:"required"`
+	Enabled        *bool           `json:"enabled,omitempty"`
+	Tags           *[]string       `json:"tags,omitempty"`
+	KeyMode        *GroupMode      `json:"key_mode,omitempty"`
+	RPM            *int            `json:"rpm,omitempty"`
+	Proxy          *bool           `json:"proxy,omitempty"`
+	AutoSync       *bool           `json:"auto_sync,omitempty"`
+	AutoCheck      *bool           `json:"auto_check,omitempty"`
+	AutoGroup      *AutoGroupType  `json:"auto_group,omitempty"`
+	CustomHeader   *[]CustomHeader `json:"custom_header,omitempty"`
+	DisguisePreset *string         `json:"disguise_preset,omitempty"`
 }
 
 type ChannelKeyAddRequest struct {

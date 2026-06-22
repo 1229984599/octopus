@@ -33,6 +33,7 @@ function buildChannelFormData(channel: Channel): ChannelFormData {
         base_urls: channel.base_urls?.length ? channel.base_urls : [{ url: '', delay: 0 }],
         tags: channel.tags ?? [],
         custom_header: channel.custom_header ?? [],
+        disguise_preset: channel.disguise_preset ?? '',
         channel_proxy: channel.channel_proxy ?? '',
         param_override: channel.param_override ?? '',
         keys: channel.keys.length > 0
@@ -109,6 +110,10 @@ export function CardContent({ channel, stats, initialEditing = false }: { channe
             req.custom_header = (formData.custom_header ?? [])
                 .map((h) => ({ header_key: h.header_key.trim(), header_value: h.header_value }))
                 .filter((h) => h.header_key && h.header_value !== '');
+        }
+
+        if ((formData.disguise_preset || '') !== (channel.disguise_preset ?? '')) {
+            req.disguise_preset = formData.disguise_preset || null;
         }
 
         const nextChannelProxy = formData.channel_proxy.trim();

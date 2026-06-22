@@ -209,15 +209,17 @@ func batchUpdateChannel(c *gin.Context) {
 	updated := make([]model.Channel, 0, len(ids))
 	for _, id := range ids {
 		updateReq := model.ChannelUpdateRequest{
-			ID:        id,
-			Enabled:   req.Enabled,
-			Tags:      req.Tags,
-			KeyMode:   req.KeyMode,
-			RPM:       req.RPM,
-			Proxy:     req.Proxy,
-			AutoSync:  req.AutoSync,
-			AutoCheck: req.AutoCheck,
-			AutoGroup: req.AutoGroup,
+			ID:             id,
+			Enabled:        req.Enabled,
+			Tags:           req.Tags,
+			KeyMode:        req.KeyMode,
+			RPM:            req.RPM,
+			Proxy:          req.Proxy,
+			AutoSync:       req.AutoSync,
+			AutoCheck:      req.AutoCheck,
+			AutoGroup:      req.AutoGroup,
+			CustomHeader:   req.CustomHeader,
+			DisguisePreset: req.DisguisePreset,
 		}
 		channel, err := op.ChannelUpdate(&updateReq, c.Request.Context())
 		if err != nil {
@@ -264,7 +266,9 @@ func channelBatchUpdateHasFields(req *model.ChannelBatchUpdateRequest) bool {
 		req.Proxy != nil ||
 		req.AutoSync != nil ||
 		req.AutoCheck != nil ||
-		req.AutoGroup != nil
+		req.AutoGroup != nil ||
+		req.CustomHeader != nil ||
+		req.DisguisePreset != nil
 }
 
 type channelTagSummary struct {
@@ -424,6 +428,11 @@ func checkChannelKeys(c *gin.Context) {
 		resp.Error(c, http.StatusBadRequest, "model required")
 		return
 	}
+	// 模型兜底：若用户选定模型已不在上游可用模型列表中，自动切换为列表首个可用模型
+	resolvedModel, resolveNote := helper.ResolveCheckModel(ctx, *channel, checkModel, request.KeyIDs)
+	if strings.TrimSpace(resolvedModel) != "" {
+		checkModel = resolvedModel
+	}
 	if strings.TrimSpace(channel.CheckModel) != checkModel {
 		if _, err := op.ChannelUpdate(&model.ChannelUpdateRequest{ID: channel.ID, CheckModel: &checkModel}, ctx); err != nil {
 			resp.Error(c, http.StatusInternalServerError, err.Error())
@@ -446,7 +455,7 @@ func checkChannelKeys(c *gin.Context) {
 		resp.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	resp.Success(c, results)
+	resp.Success(c, gin.H{"results": results, "note": resolveNote})
 }
 
 func channelKeyCheckResultIDs(results []helper.ChannelKeyCheckResult) []int {

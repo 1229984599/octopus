@@ -231,6 +231,55 @@ func selectCheckKeys(keys []model.ChannelKey, ids []int) []model.ChannelKey {
 	return selected
 }
 
+// ResolveCheckModel 在用户选定的检测模型（desired）可能已不在上游模型列表中时，
+// 解析出实际应使用的检测模型。遍历候选 key（遵守渠道 RPM、复用 FetchModels 内置的
+// 禁用/429 冷却过滤），逐 key 拉取模型列表：
+//   - desired 命中任一 key 的列表 → 原样返回 desired（note 为空）。
+//   - 没有列表包含 desired，但至少拉到一个非空列表 → 返回首个非空列表的首个模型作为兜底，
+//     并附带说明 note。
+//   - 所有 key 都拉取列表失败 → 返回 desired（沿用原模型，后续 key 检测会自然反映失败），note 为空。
+//
+// 该函数不负责持久化，由调用方在模型发生切换时持久化 CheckModel。
+func ResolveCheckModel(ctx context.Context, channel model.Channel, desired string, keyIDs []int) (resolved string, note string) {
+	desired = strings.TrimSpace(desired)
+	if desired == "" {
+		return "", ""
+	}
+	selected := selectCheckKeys(channel.Keys, keyIDs)
+	if len(selected) == 0 {
+		return desired, ""
+	}
+	var fallback string
+	fetched := false
+	for _, key := range selected {
+		if ctx.Err() != nil {
+			break
+		}
+		if err := op.WaitChannelRateLimit(ctx, channel.ID, channel.RPM); err != nil {
+			continue
+		}
+		single := channel
+		single.Keys = []model.ChannelKey{key}
+		models, err := FetchModels(ctx, single)
+		if err != nil || len(models) == 0 {
+			continue
+		}
+		fetched = true
+		if strings.TrimSpace(fallback) == "" {
+			fallback = strings.TrimSpace(models[0])
+		}
+		for _, m := range models {
+			if strings.EqualFold(strings.TrimSpace(m), desired) {
+				return desired, ""
+			}
+		}
+	}
+	if fetched && strings.TrimSpace(fallback) != "" {
+		return fallback, fmt.Sprintf("检测模型 %s 不在可用模型列表中，已自动切换为 %s", desired, fallback)
+	}
+	return desired, ""
+}
+
 func buildKeyCheckRequest(ctx context.Context, channel model.Channel, key, modelName string, strategy CheckStrategy) (*http.Request, error) {
 	baseURL := channel.GetBaseUrl()
 	if strings.TrimSpace(baseURL) == "" {

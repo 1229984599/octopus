@@ -82,6 +82,7 @@ export type Channel = {
     auto_check: boolean;
     auto_group: AutoGroupType;
     custom_header: CustomHeader[];
+    disguise_preset?: string | null;
     param_override?: string | null;
     channel_proxy?: string | null;
     match_regex?: string | null;
@@ -125,6 +126,7 @@ export type CreateChannelRequest = {
     auto_check?: boolean;
     auto_group?: AutoGroupType;
     custom_header?: CustomHeader[];
+    disguise_preset?: string | null;
     channel_proxy?: string | null;
     param_override?: string | null;
     match_regex?: string | null;
@@ -150,6 +152,7 @@ export type UpdateChannelRequest = {
     auto_check?: boolean;
     auto_group?: AutoGroupType;
     custom_header?: CustomHeader[];
+    disguise_preset?: string | null;
     channel_proxy?: string | null;
     param_override?: string | null;
     match_regex?: string | null;
@@ -173,6 +176,8 @@ export type BatchUpdateChannelRequest = {
     auto_sync?: boolean;
     auto_check?: boolean;
     auto_group?: AutoGroupType;
+    custom_header?: CustomHeader[];
+    disguise_preset?: string;
 };
 
 export type ChannelKeyCheckResult = {
@@ -476,7 +481,7 @@ export function useCheckChannelKeys() {
 
     return useMutation({
         mutationFn: async (data: { id: number; model: string; key_ids?: number[]; mode?: string }) => {
-            return apiClient.post<ChannelKeyCheckResult[]>('/api/v1/channel/check-keys', data);
+            return apiClient.post<{ results: ChannelKeyCheckResult[]; note?: string }>('/api/v1/channel/check-keys', data);
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['channels', 'list'] });

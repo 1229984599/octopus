@@ -47,6 +47,7 @@ import { AlertTriangle, Check, CheckSquare, Edit3, Plus, Search, Tags, Trash2, X
 import { useTranslations } from '@/lib/translations';
 import { useChannelNavigationStore } from './navigation-store';
 import { getChannelHealth } from './health';
+import { DISGUISE_PRESETS, findDisguisePreset } from './disguisePresets';
 
 type ChannelListItem = {
     raw: ChannelType;
@@ -62,6 +63,7 @@ type BatchFieldState = {
     auto_sync: boolean;
     auto_check: boolean;
     auto_group: boolean;
+    disguise_preset: boolean;
 };
 
 const DEFAULT_BATCH_FIELDS: BatchFieldState = {
@@ -73,7 +75,10 @@ const DEFAULT_BATCH_FIELDS: BatchFieldState = {
     auto_sync: false,
     auto_check: false,
     auto_group: false,
+    disguise_preset: false,
 };
+
+const NO_DISGUISE_PRESET_VALUE = '__none__';
 
 function deferStateUpdate(update: () => void) {
     queueMicrotask(update);
@@ -476,6 +481,7 @@ function BatchEditDialog({
         auto_sync: false,
         auto_check: true,
         auto_group: AutoGroupType.Regex,
+        disguise_preset: NO_DISGUISE_PRESET_VALUE,
     });
     const [tagInputValue, setTagInputValue] = useState('');
     const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
@@ -500,6 +506,13 @@ function BatchEditDialog({
         if (fields.auto_sync) items.push(t('previewAutoSync', { value: values.auto_sync ? t('yes') : t('no') }));
         if (fields.auto_check) items.push(t('previewAutoCheck', { value: values.auto_check ? t('yes') : t('no') }));
         if (fields.auto_group) items.push(t('previewAutoGroup'));
+        if (fields.disguise_preset) {
+            const presetName =
+                values.disguise_preset === NO_DISGUISE_PRESET_VALUE
+                    ? t('disguiseNone')
+                    : (findDisguisePreset(values.disguise_preset)?.label ?? values.disguise_preset);
+            items.push(t('previewDisguisePreset', { value: presetName }));
+        }
         return items;
     }, [fields, t, values]);
     const filteredTagOptions = useMemo(() => {
@@ -565,6 +578,20 @@ function BatchEditDialog({
         if (fields.auto_sync) payload.auto_sync = values.auto_sync;
         if (fields.auto_check) payload.auto_check = values.auto_check;
         if (fields.auto_group) payload.auto_group = values.auto_group;
+        if (fields.disguise_preset) {
+            if (values.disguise_preset === NO_DISGUISE_PRESET_VALUE) {
+                payload.disguise_preset = '';
+                payload.custom_header = [];
+            } else {
+                const preset = findDisguisePreset(values.disguise_preset);
+                if (!preset) {
+                    toast.error(t('invalidDisguisePreset'));
+                    return;
+                }
+                payload.disguise_preset = preset.id;
+                payload.custom_header = preset.headers;
+            }
+        }
 
         batchUpdateChannels.mutate(payload, {
             onSuccess: () => {
@@ -731,6 +758,27 @@ function BatchEditDialog({
                                 <SelectItem value={String(AutoGroupType.Fuzzy)}>{tForm('autoGroupFuzzy')}</SelectItem>
                                 <SelectItem value={String(AutoGroupType.Exact)}>{tForm('autoGroupExact')}</SelectItem>
                                 <SelectItem value={String(AutoGroupType.Regex)}>{tForm('autoGroupRegex')}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </BatchSelectRow>
+                    <BatchSelectRow
+                        checked={fields.disguise_preset}
+                        onCheckedChange={(checked) => updateField('disguise_preset', checked)}
+                        label={t('disguisePreset')}
+                    >
+                        <Select
+                            disabled={!fields.disguise_preset}
+                            value={values.disguise_preset}
+                            onValueChange={(value) => setValues((prev) => ({ ...prev, disguise_preset: value }))}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={NO_DISGUISE_PRESET_VALUE}>{t('disguiseNone')}</SelectItem>
+                                {DISGUISE_PRESETS.map((preset) => (
+                                    <SelectItem key={preset.id} value={preset.id}>{preset.label}</SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </BatchSelectRow>

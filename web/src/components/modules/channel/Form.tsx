@@ -13,11 +13,12 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/components/common/Toast';
 import { useTranslations } from '@/lib/translations';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { Ban, Check, GripVertical, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CheckResultDetail } from '@/components/common/CheckResultDetail';
 import { getKeyHealth, keyNeedsAttention, type KeyHealthState } from './health';
+import { DISGUISE_PRESETS, findDisguisePreset } from './disguisePresets';
 
 export interface ChannelKeyFormItem {
     id?: number;
@@ -51,6 +52,7 @@ function deferStateUpdate(update: () => void) {
 }
 
 type KeyFilter = 'all' | 'enabled' | 'disabled' | 'attention' | 'invalid';
+const NO_DISGUISE_PRESET_VALUE = '__none__';
 
 function KeyStateBadge({ state, label }: { state: KeyHealthState; label: (key: string) => string }) {
     const tone = state === 'ok'
@@ -74,6 +76,7 @@ export interface ChannelFormData {
     type: ChannelType;
     base_urls: Channel['base_urls'];
     custom_header: Channel['custom_header'];
+    disguise_preset: string;
     channel_proxy: string;
     param_override: string;
     keys: ChannelKeyFormItem[];
@@ -169,6 +172,7 @@ export function ChannelForm({
     const [tagInputValue, setTagInputValue] = useState('');
     const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
     const [draggedKeyIndex, setDraggedKeyIndex] = useState<number | null>(null);
+    const [dragOverKeyIndex, setDragOverKeyIndex] = useState<number | null>(null);
     const [selectedKeyIds, setSelectedKeyIds] = useState<Set<number>>(new Set());
     const [checkModel, setCheckModel] = useState(formData.check_model ?? '');
     const [modelSearch, setModelSearch] = useState('');
@@ -176,6 +180,7 @@ export function ChannelForm({
     const [checkResults, setCheckResults] = useState<Record<number, ChannelKeyCheckResult>>({});
     const [keyFilter, setKeyFilter] = useState<KeyFilter>('all');
     const inputRef = useRef<HTMLInputElement>(null);
+    const keyListRef = useRef<HTMLDivElement>(null);
 
     const fetchModel = useFetchModel();
     const checkChannelKeys = useCheckChannelKeys();
@@ -198,6 +203,20 @@ export function ChannelForm({
 
     const effectiveKey =
         formData.keys.find((k) => k.enabled && k.channel_key.trim())?.channel_key.trim() || '';
+
+    const handleDisguisePresetChange = (value: string) => {
+        if (value === NO_DISGUISE_PRESET_VALUE) {
+            onFormDataChange({ ...formData, disguise_preset: '' });
+            return;
+        }
+        const preset = findDisguisePreset(value);
+        if (!preset) return;
+        onFormDataChange({
+            ...formData,
+            disguise_preset: preset.id,
+            custom_header: preset.headers.map((header) => ({ ...header })),
+        });
+    };
 
     const selectedKeyIdArray = useMemo(() => Array.from(selectedKeyIds), [selectedKeyIds]);
     const checkableExistingKeyIds = useMemo(
@@ -394,17 +413,58 @@ export function ChannelForm({
         onFormDataChange({ ...formData, keys: next });
     };
 
-    const handleDropKey = (idx: number) => {
-        if (draggedKeyIndex === null || draggedKeyIndex === idx) {
-            setDraggedKeyIndex(null);
+    const resetKeyDragState = () => {
+        setDraggedKeyIndex(null);
+        setDragOverKeyIndex(null);
+    };
+
+    const handleKeyListDragOver = (event: DragEvent<HTMLDivElement>) => {
+        if (draggedKeyIndex === null) return;
+        event.preventDefault();
+
+        const container = keyListRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const edgeSize = 64;
+        const maxSpeed = 18;
+        if (event.clientY < rect.top + edgeSize) {
+            container.scrollTop -= Math.max(4, Math.round(((rect.top + edgeSize - event.clientY) / edgeSize) * maxSpeed));
+        } else if (event.clientY > rect.bottom - edgeSize) {
+            container.scrollTop += Math.max(4, Math.round(((event.clientY - (rect.bottom - edgeSize)) / edgeSize) * maxSpeed));
+        }
+    };
+
+    const handleKeyDragOver = (event: DragEvent<HTMLDivElement>, idx: number) => {
+        if (draggedKeyIndex === null) return;
+        event.preventDefault();
+        const rect = event.currentTarget.getBoundingClientRect();
+        const insertIndex = event.clientY < rect.top + rect.height / 2 ? idx : idx + 1;
+        setDragOverKeyIndex(insertIndex);
+    };
+
+    const handleDropKey = (insertIndex: number) => {
+        if (draggedKeyIndex === null) {
+            resetKeyDragState();
             return;
         }
-        const next = [...(formData.keys ?? [])];
+        const currentKeys = formData.keys ?? [];
+        const boundedInsertIndex = Math.max(0, Math.min(insertIndex, currentKeys.length));
+        if (draggedKeyIndex < 0 || draggedKeyIndex >= currentKeys.length) {
+            resetKeyDragState();
+            return;
+        }
+        const targetIndex = draggedKeyIndex < boundedInsertIndex ? boundedInsertIndex - 1 : boundedInsertIndex;
+        if (targetIndex === draggedKeyIndex) {
+            resetKeyDragState();
+            return;
+        }
+
+        const next = [...currentKeys];
         const [dragged] = next.splice(draggedKeyIndex, 1);
-        next.splice(idx, 0, dragged);
+        next.splice(targetIndex, 0, dragged);
         const normalized = normalizeKeyOrder(next);
         onFormDataChange({ ...formData, keys: normalized });
-        setDraggedKeyIndex(null);
+        resetKeyDragState();
 
         if (!canManageExistingKeys) return;
         const keysToUpdate = normalized
@@ -452,7 +512,10 @@ export function ChannelForm({
         checkChannelKeys.mutate(
             { id: channelId, model: activeCheckModel, key_ids: ids, mode },
             {
-                onSuccess: (results) => {
+                onSuccess: ({ results, note }) => {
+                    if (note) {
+                        toast.warning(note);
+                    }
                     const resultByID = new Map(results.map((result) => [result.id, result]));
                     setCheckResults((prev) => ({ ...prev, ...Object.fromEntries(results.map((result) => [result.id, result])) }));
                     onFormDataChange({
@@ -901,23 +964,43 @@ export function ChannelForm({
                         </button>
                     ))}
                 </div>
-                <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
-                    {visibleKeys.map(({ key: k, index: idx }) => (
-                        <div
-                            key={k.id ?? `new-${idx}`}
-                            onDragOver={(event) => event.preventDefault()}
-                            onDrop={() => handleDropKey(idx)}
-                            className={cn(
-                                "flex flex-col gap-2 rounded-xl border border-border/40 bg-background/60 p-2 transition-colors",
-                                draggedKeyIndex === idx ? "opacity-60" : "hover:bg-muted/30"
-                            )}
-                        >
+                <div
+                    ref={keyListRef}
+                    onDragOver={handleKeyListDragOver}
+                    onDrop={() => handleDropKey(dragOverKeyIndex ?? (formData.keys ?? []).length)}
+                    className="max-h-96 space-y-2 overflow-y-auto pr-1"
+                >
+                    {visibleKeys.map(({ key: k, index: idx }) => {
+                        const showDropBefore = draggedKeyIndex !== null && dragOverKeyIndex === idx && draggedKeyIndex !== idx && draggedKeyIndex + 1 !== idx;
+                        return (
+                            <div key={k.id ?? `new-${idx}`} className="space-y-2">
+                                {showDropBefore && (
+                                    <div className="flex items-center gap-2 px-2 text-[10px] font-medium text-primary">
+                                        <span className="h-0.5 flex-1 rounded-full bg-primary" />
+                                        <span>{keyT('dropHere')}</span>
+                                        <span className="h-0.5 flex-1 rounded-full bg-primary" />
+                                    </div>
+                                )}
+                                <div
+                                    onDragOver={(event) => handleKeyDragOver(event, idx)}
+                                    onDrop={() => handleDropKey(dragOverKeyIndex ?? idx)}
+                                    className={cn(
+                                        "flex flex-col gap-2 rounded-xl border border-border/40 bg-background/60 p-2 transition-colors",
+                                        draggedKeyIndex === idx ? "opacity-60" : "hover:bg-muted/30",
+                                        showDropBefore && "border-primary/50"
+                                    )}
+                                >
                             <div className="flex min-w-0 items-center justify-between gap-3">
                                 <div className="flex min-w-0 items-center gap-2">
                                     <span
                                         draggable={(formData.keys ?? []).length > 1}
-                                        onDragStart={() => setDraggedKeyIndex(idx)}
-                                        onDragEnd={() => setDraggedKeyIndex(null)}
+                                        onDragStart={(event) => {
+                                            setDraggedKeyIndex(idx);
+                                            setDragOverKeyIndex(idx);
+                                            event.dataTransfer.effectAllowed = 'move';
+                                            event.dataTransfer.setData('text/plain', String(idx));
+                                        }}
+                                        onDragEnd={resetKeyDragState}
                                         className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-lg text-muted-foreground hover:bg-muted active:cursor-grabbing"
                                         title={t('priority')}
                                     >
@@ -943,14 +1026,11 @@ export function ChannelForm({
                                                 variant="secondary"
                                                 className={cn(
                                                     "h-5 px-1.5 text-[10px]",
-                                                    k.status_code === 200
+                                                    k.status_code >= 200 && k.status_code < 300
                                                         ? "bg-green-500/15 text-green-700 dark:text-green-400"
-                                                        : k.status_code === 401 ||
-                                                            k.status_code === 403 ||
-                                                            k.status_code === 429 ||
-                                                            k.status_code >= 500
-                                                            ? "bg-red-500/15 text-red-700 dark:text-red-400"
-                                                            : "bg-orange-500/15 text-orange-700 dark:text-orange-400"
+                                                        : k.status_code === 429
+                                                            ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                                                            : "bg-red-500/15 text-red-700 dark:text-red-400"
                                                 )}
                                             >
                                                 {k.status_code}
@@ -1014,8 +1094,17 @@ export function ChannelForm({
                                     />
                                 )}
                             </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {draggedKeyIndex !== null && dragOverKeyIndex === (formData.keys ?? []).length && draggedKeyIndex !== (formData.keys ?? []).length - 1 && (
+                        <div className="flex items-center gap-2 px-2 text-[10px] font-medium text-primary">
+                            <span className="h-0.5 flex-1 rounded-full bg-primary" />
+                            <span>{keyT('dropHere')}</span>
+                            <span className="h-0.5 flex-1 rounded-full bg-primary" />
                         </div>
-                    ))}
+                    )}
                     {visibleKeys.length === 0 && (
                         <div className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
                             {keyT('filterEmpty')}
@@ -1184,6 +1273,26 @@ export function ChannelForm({
                                     placeholder={t('channelProxyPlaceholder')}
                                     className="rounded-xl"
                                 />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label htmlFor={`${idPrefix}-disguise-preset`} className="text-sm font-medium text-card-foreground">
+                                    伪装预设
+                                </label>
+                                <Select
+                                    value={formData.disguise_preset || NO_DISGUISE_PRESET_VALUE}
+                                    onValueChange={handleDisguisePresetChange}
+                                >
+                                    <SelectTrigger id={`${idPrefix}-disguise-preset`} className="rounded-xl w-full border border-border px-4 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                        <SelectValue placeholder="选择预设" />
+                                    </SelectTrigger>
+                                    <SelectContent className='rounded-xl'>
+                                        <SelectItem className='rounded-xl' value={NO_DISGUISE_PRESET_VALUE}>无</SelectItem>
+                                        {DISGUISE_PRESETS.map((preset) => (
+                                            <SelectItem key={preset.id} className='rounded-xl' value={preset.id}>{preset.label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
 

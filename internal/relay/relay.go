@@ -347,7 +347,13 @@ func (ra *relayAttempt) applyChannelRequestOptions(outboundRequest *httpclient.R
 		if outboundRequest.Headers.Get(header.HeaderKey) != "" && httpclient.IsSensitiveHeader(header.HeaderKey) {
 			continue
 		}
-		outboundRequest.Headers.Set(header.HeaderKey, header.HeaderValue)
+		// custom_header 的值支持占位符（{{uuid}}/{{inbound.header.X}}/{{inbound.query.X}}/{{A|B}} 等），
+		// 由 renderHeaderValue 渲染；若整值是占位符且渲染结果为空（如待透传的入站头缺失），则跳过该头不发送。
+		rendered := renderHeaderValue(header.HeaderValue, ra.c)
+		if rendered == "" && strings.Contains(header.HeaderValue, "{{") {
+			continue
+		}
+		outboundRequest.Headers.Set(header.HeaderKey, rendered)
 	}
 }
 

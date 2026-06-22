@@ -514,6 +514,19 @@ func checkChannelKeys(ctx context.Context, channel model.Channel, summary *autoH
 		return
 	}
 
+	// 模型兜底：若默认检测模型已不在上游可用模型列表中，自动切换为列表首个模型并持久化
+	if resolved, note := helper.ResolveCheckModel(ctx, channel, modelName, nil); resolved != "" && resolved != modelName {
+		if _, err := op.ChannelUpdate(&model.ChannelUpdateRequest{ID: channel.ID, CheckModel: &resolved}, ctx); err != nil {
+			errText := fmt.Sprintf("persist resolved check model for channel %d: %v", channel.ID, err)
+			summary.Errors = append(summary.Errors, errText)
+			appendAutoHealthCheckLog("error", "持久化切换后的检测模型失败", strings.Join([]string{current, errText}, "\n"))
+		} else {
+			channel.CheckModel = resolved
+			modelName = resolved
+			appendAutoHealthCheckLog("warn", "检测模型自动切换", strings.Join([]string{current, note}, "\n"))
+		}
+	}
+
 	updateAutoHealthCheckProgress("checking_channel", fmt.Sprintf("正在使用模型 %s 检测渠道 Key...", modelName), current, *summary)
 	keyLabels := channelKeyLabels(channel.Keys)
 	results := helper.CheckChannelKeys(ctx, channel, modelName, nil)

@@ -559,7 +559,11 @@
             "untagged": "无标签",
             "tagsPlaceholder": "多个标签用逗号分隔，留空表示清空标签",
             "tagsSearchPlaceholder": "搜索或创建标签",
-            "tagsEmptyHint": "勾选后不选择标签，将清空这些渠道的标签"
+            "tagsEmptyHint": "勾选后不选择标签，将清空这些渠道的标签",
+            "previewDisguisePreset": "伪装预设: {value}",
+            "invalidDisguisePreset": "伪装预设无效",
+            "disguisePreset": "伪装预设",
+            "disguiseNone": "无（清空伪装头）"
         },
         "empty": {
             "title": "暂无渠道",
@@ -626,7 +630,8 @@
                     "unchecked": "未检测"
                 },
                 "sorted": "排序已保存",
-                "sortFailed": "排序保存失败"
+                "sortFailed": "排序保存失败",
+                "dropHere": "拖放到此位置"
             },
             "metrics": {
                 "totalRequests": "总请求",
