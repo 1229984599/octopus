@@ -547,43 +547,60 @@ main() {
         # Build for different platforms
         log_step "Building binaries"
 
-        # Standard builds (pure Go, static binaries)
+        # Standard builds (pure Go, static binaries). Fail fast so CI never
+        # continues to Docker/release upload with missing platform binaries.
+        local build_failed=0
         if ! build_standard linux x86_64; then
             log_error "Failed to build Linux x86_64"
+            build_failed=1
         fi
         if ! build_standard linux arm64; then
             log_error "Failed to build Linux arm64"
+            build_failed=1
         fi
         if ! build_standard linux armv7; then
             log_error "Failed to build Linux armv7"
+            build_failed=1
         fi
         if ! build_standard linux x86; then
             log_error "Failed to build Linux x86"
+            build_failed=1
         fi
         if ! build_standard windows x86_64; then
             log_error "Failed to build Windows x86_64"
+            build_failed=1
         fi
         if ! build_standard windows x86; then
             log_error "Failed to build Windows x86"
+            build_failed=1
         fi
         if ! build_standard darwin arm64; then
             log_error "Failed to build Darwin arm64"
+            build_failed=1
         fi
         if ! build_standard darwin x86_64; then
-            log_error "Failed to build Darwin arm64"
+            log_error "Failed to build Darwin x86_64"
+            build_failed=1
+        fi
+        if [ "${build_failed}" -ne 0 ]; then
+            log_error "One or more platform builds failed; aborting release"
+            exit 1
         fi
 
         # Post-processing
         if ! prepare_docker_binaries; then
-            log_warning "Failed to prepare Docker binaries, but continuing..."
+            log_error "Failed to prepare Docker binaries"
+            exit 1
         fi
 
         if ! generate_checksums; then
-            log_warning "Failed to generate checksums, but continuing..."
+            log_error "Failed to generate checksums"
+            exit 1
         fi
 
         if ! create_archives; then
-            log_warning "Failed to create archives, but continuing..."
+            log_error "Failed to create archives"
+            exit 1
         fi
 
         log_step "Build completed"

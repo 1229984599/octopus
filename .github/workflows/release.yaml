@@ -31,9 +31,14 @@ jobs:
 
       - name: Checkout axonhub dependency
         run: |
-          git clone --depth 1 --branch unstable https://github.com/looplj/axonhub.git ../axonhub
+          # Pin axonhub so go.sum stays reproducible with replace => ../axonhub/llm
+          AXONHUB_REF="ccb4e76c9ec1de1e1cdf243f490d833155cc1c38"
+          git clone --filter=blob:none --no-checkout https://github.com/looplj/axonhub.git ../axonhub
+          git -C ../axonhub fetch --depth 1 origin "${AXONHUB_REF}"
+          git -C ../axonhub checkout --detach FETCH_HEAD
           test -f ../axonhub/llm/go.mod
-          git -C ../axonhub rev-parse --short HEAD
+          git -C ../axonhub rev-parse HEAD
+          test "$(git -C ../axonhub rev-parse HEAD)" = "${AXONHUB_REF}"
 
       - name: Setup Go
         uses: actions/setup-go@v6
