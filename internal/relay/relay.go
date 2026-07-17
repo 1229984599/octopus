@@ -267,6 +267,14 @@ func (ra *relayAttempt) forward() (int, error) {
 		return 0, fmt.Errorf("missing raw request")
 	}
 
+	// Kimi coding 等上游会拒绝空 content 的 user/assistant 消息；
+	// 在 outbound 前对空文本填空格占位，避免 "must not be empty"。
+	sanitizeEmptyMessageContents(ra.internalRequest)
+
+	// Kimi coding 上游仅接受 temperature=1，客户端常传 0 会触发 400 invalid temperature。
+	// 在 outbound 前对 kimi-for-coding 渠道强制 temperature=1。
+	normalizeKimiCodingTemperature(ra.internalRequest, ra.channel)
+
 	httpClient, err := helper.ChannelHttpClient(ra.channel)
 	if err != nil {
 		log.Warnf("failed to get http client: %v", err)
@@ -535,4 +543,99 @@ func (in *parsedRequestInbound) TransformRequest(ctx context.Context, request *h
 	// relay 已经为选路解析过请求；pipeline 入口复用该结果，避免每次通道尝试再次解析同一份 body。
 	in.request.RawRequest = request
 	return in.request, nil
+}
+
+// emptyMessagePlaceholder is a single space. Kimi coding rejects empty user/assistant
+// content, but accepts whitespace-only content.
+const emptyMessagePlaceholder = " "
+
+// isKimiCodingChannel reports whether the channel targets the Kimi coding
+// upstream, which enforces temperature=1 and rejects any other value with
+// 400 invalid temperature.
+func isKimiCodingChannel(req *llm.Request, channel *dbmodel.Channel) bool {
+	if req == nil || channel == nil {
+		return false
+	}
+	base := strings.ToLower(channel.GetBaseUrl())
+	if strings.Contains(base, "api.kimi.com") && strings.Contains(base, "coding") {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(req.Model), "kimi-for-coding") {
+		return true
+	}
+	return false
+}
+
+// normalizeKimiCodingTemperature forces temperature=1 for the Kimi coding
+// upstream. That upstream only accepts temperature=1; clients (coding agents)
+// frequently send temperature=0, which yields 400 invalid temperature.
+// When temperature is unset (nil) the upstream already defaults to 1, so we
+// only override an explicit non-1 value.
+func normalizeKimiCodingTemperature(req *llm.Request, channel *dbmodel.Channel) {
+	if !isKimiCodingChannel(req, channel) {
+		return
+	}
+	if req.Temperature == nil {
+		return
+	}
+	if *req.Temperature == 1 {
+		return
+	}
+	one := 1.0
+	req.Temperature = &one
+}
+
+// sanitizeEmptyMessageContents fills empty text content with a space for roles that
+// providers treat as "must not be empty". Assistant messages with tool_calls and
+// tool-role messages are left untouched.
+func sanitizeEmptyMessageContents(req *llm.Request) {
+	if req == nil {
+		return
+	}
+	for i := range req.Messages {
+		msg := &req.Messages[i]
+		switch strings.ToLower(msg.Role) {
+		case "user", "system", "developer":
+			// always require non-empty text content
+		case "assistant":
+			// assistant with tool_calls may legally have empty content
+			if len(msg.ToolCalls) > 0 {
+				continue
+			}
+		default:
+			// tool / unknown roles: leave as-is
+			continue
+		}
+		if messageTextContentEmpty(msg) {
+			placeholder := emptyMessagePlaceholder
+			msg.Content = llm.MessageContent{Content: &placeholder}
+		}
+	}
+}
+
+// messageTextContentEmpty reports whether a message has no usable text/media content.
+func messageTextContentEmpty(msg *llm.Message) bool {
+	if msg == nil {
+		return true
+	}
+	c := msg.Content
+	if len(c.MultipleContent) > 0 {
+		for _, part := range c.MultipleContent {
+			switch part.Type {
+			case "text", "":
+				if part.Text != nil && *part.Text != "" {
+					return false
+				}
+			default:
+				// image_url / video_url / input_audio / document etc. count as non-empty
+				return false
+			}
+		}
+		// only empty text parts
+		return true
+	}
+	if c.Content == nil {
+		return true
+	}
+	return *c.Content == ""
 }

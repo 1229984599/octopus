@@ -309,12 +309,13 @@ func buildOpenAIChatKeyCheckRequest(ctx context.Context, channelType llm.APIForm
 		version = "v3"
 	}
 	url := transformer.NormalizeBaseURL(baseURL, version) + "/chat/completions"
+	// 不传 temperature：部分上游（如 kimi-for-coding）强制 temperature=1，
+	// 硬编码 0 会直接 400 invalid temperature。检测只需验证 key/鉴权可用性。
 	body, _ := json.Marshal(map[string]any{
-		"model":       modelName,
-		"messages":    []map[string]string{{"role": "user", "content": "ping"}},
-		"max_tokens":  1,
-		"temperature": 0,
-		"stream":      false,
+		"model":      modelName,
+		"messages":   []map[string]string{{"role": "user", "content": "ping"}},
+		"max_tokens": 1,
+		"stream":     false,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
