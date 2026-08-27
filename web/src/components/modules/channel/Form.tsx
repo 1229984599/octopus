@@ -393,9 +393,10 @@ export function ChannelForm({
     };
 
     const handleAddKey = () => {
+        // 新 Key 行插入到列表最前面，长列表无需滚动到底部；优先级随位置重排
         onFormDataChange({
             ...formData,
-            keys: [...formData.keys, { enabled: true, channel_key: '', priority: formData.keys.length + 1, weight: 1 }],
+            keys: normalizeKeyOrder([{ enabled: true, channel_key: '', weight: 1 }, ...formData.keys]),
         });
     };
 
@@ -428,7 +429,7 @@ export function ChannelForm({
             toast.warning(keyT('bulkImportEmpty'), { description: keyT('bulkImportEmptyHint') });
             return;
         }
-        onFormDataChange({ ...formData, keys: [...formData.keys, ...newKeys] });
+        onFormDataChange({ ...formData, keys: normalizeKeyOrder([...newKeys, ...formData.keys]) });
         setBulkKeyInput('');
         setBulkImportOpen(false);
         toast.success(keyT('bulkImportDone'), { description: `${newKeys.length} ${skipped > 0 ? `(跳过重复 ${skipped})` : ''}`.trim() });
@@ -1130,7 +1131,9 @@ export function ChannelForm({
                                     value={k.channel_key}
                                     onChange={(e) => handleUpdateKey(idx, { channel_key: e.target.value })}
                                     placeholder={t('apiKey')}
-                                    required={idx === 0}
+                                    // 仅剩一行时才必填（新建渠道至少 1 个 Key）；
+                                    // 置顶新增的空行不阻塞保存，保存时空行会被静默丢弃
+                                    required={formData.keys.length === 1}
                                     className="min-w-0 rounded-xl font-mono text-sm"
                                 />
                                 <Input
