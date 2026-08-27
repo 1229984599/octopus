@@ -15,7 +15,7 @@ func TestIteratorExpandsGroupItemRetryCount(t *testing.T) {
 		},
 	}
 
-	iter := NewIterator(group, 0, "gpt-test")
+	iter := NewIterator(group, 0, "gpt-test", "")
 	got := make([]int, 0, iter.Len())
 	for iter.Next() {
 		got = append(got, iter.Item().ChannelID)

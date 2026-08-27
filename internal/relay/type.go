@@ -10,13 +10,14 @@ import (
 
 // relayRun 保存一次客户端请求在负载均衡循环中共享的状态。
 type relayRun struct {
-	c               *gin.Context
-	inAdapter       transformer.Inbound
-	internalRequest *llm.Request
-	metrics         *RelayMetrics
-	iter            *balancer.Iterator
-	group           dbmodel.Group
-	failedKeys      map[channelKeyRef]struct{}
+	c                  *gin.Context
+	inAdapter          transformer.Inbound
+	internalRequest    *llm.Request
+	sessionFingerprint string // 客户端对话指纹，粘性会话按对话粒度路由
+	metrics            *RelayMetrics
+	iter               *balancer.Iterator
+	group              dbmodel.Group
+	failedKeys         map[channelKeyRef]struct{}
 }
 
 // relayAttempt 保存一次上游通道尝试的状态。

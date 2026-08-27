@@ -12,8 +12,8 @@ import (
 type Iterator struct {
 	candidates []model.GroupItem
 	index      int
-	stickyIdx  int    // 粘性通道在 candidates 中的位置，-1 表示无
-	modelName  string // 请求模型名（用于熔断检查）
+	sticky     *SessionEntry // 粘性会话记录（渠道 + Key），Key 级亲和用
+	modelName  string        // 请求模型名（用于熔断检查）
 
 	// 内嵌追踪
 	attempts []model.ChannelAttempt
@@ -22,23 +22,24 @@ type Iterator struct {
 
 // NewIterator 创建负载均衡迭代器
 // 自动处理：策略排序 + 粘性通道提前
-func NewIterator(group model.Group, apiKeyID int, requestModel string) *Iterator {
+// sessionFingerprint 标识客户端的独立对话，为空时退化为 apiKey+模型级亲和
+func NewIterator(group model.Group, apiKeyID int, requestModel, sessionFingerprint string) *Iterator {
 	b := GetBalancer(group.Mode)
-	candidates := expandRetryCandidates(b.Candidates(group.Items))
+	ordered := b.Candidates(group.Items)
 
-	stickyIdx := -1
+	var sticky *SessionEntry
 	if group.SessionKeepTime > 0 {
-		stickyTTL := time.Duration(group.SessionKeepTime) * time.Second
-		if sticky := GetSticky(apiKeyID, requestModel, stickyTTL); sticky != nil {
-			for i, item := range candidates {
-				if item.ChannelID == sticky.ChannelID {
+		if entry := GetSticky(SessionKey(apiKeyID, requestModel, sessionFingerprint)); entry != nil {
+			sticky = entry
+			for i, item := range ordered {
+				if item.ChannelID == entry.ChannelID {
 					if i > 0 {
-						// 将粘性通道移到最前面
-						stickyItem := candidates[i]
-						copy(candidates[1:i+1], candidates[0:i])
-						candidates[0] = stickyItem
+						// 将粘性通道整体移到最前面；必须在重试展开前移动，
+						// 这样粘性渠道的重试槽位保持连续，Key 失败后先在同渠道内换 Key 重试。
+						stickyItem := ordered[i]
+						copy(ordered[1:i+1], ordered[0:i])
+						ordered[0] = stickyItem
 					}
-					stickyIdx = 0
 					break
 				}
 			}
@@ -46,11 +47,20 @@ func NewIterator(group model.Group, apiKeyID int, requestModel string) *Iterator
 	}
 
 	return &Iterator{
-		candidates: candidates,
+		candidates: expandRetryCandidates(ordered),
 		index:      -1,
-		stickyIdx:  stickyIdx,
+		sticky:     sticky,
 		modelName:  requestModel,
 	}
+}
+
+// StickyKeyID 返回粘性会话在指定渠道上记录的 Key ID；无粘性会话或渠道不匹配时返回 0。
+// 同一会话复用同一渠道的同一 Key，可最大化上游 prompt cache 命中率。
+func (it *Iterator) StickyKeyID(channelID int) int {
+	if it.sticky == nil || it.sticky.ChannelID != channelID {
+		return 0
+	}
+	return it.sticky.ChannelKeyID
 }
 
 func expandRetryCandidates(items []model.GroupItem) []model.GroupItem {
@@ -91,9 +101,9 @@ func (it *Iterator) Item() model.GroupItem {
 	return it.candidates[it.index]
 }
 
-// IsSticky 当前候选是否为粘性通道
+// IsSticky 当前候选是否属于粘性渠道
 func (it *Iterator) IsSticky() bool {
-	return it.stickyIdx >= 0 && it.index == it.stickyIdx
+	return it.sticky != nil && it.candidates[it.index].ChannelID == it.sticky.ChannelID
 }
 
 // Len 返回候选列表长度

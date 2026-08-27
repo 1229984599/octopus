@@ -17,6 +17,7 @@ import (
 	"github.com/1229984599/octopus/internal/relay/balancer"
 	"github.com/1229984599/octopus/internal/server/resp"
 	"github.com/1229984599/octopus/internal/utils/log"
+	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/looplj/axonhub/llm"
 	"github.com/looplj/axonhub/llm/httpclient"
@@ -66,7 +67,8 @@ func newRelayRun(c *gin.Context, inboundType llm.APIFormat, inAdapter transforme
 	}
 
 	apiKeyID := c.GetInt("api_key_id")
-	iter := balancer.NewIterator(group, apiKeyID, internalRequest.Model)
+	sessionFingerprint := sessionFingerprint(internalRequest)
+	iter := balancer.NewIterator(group, apiKeyID, internalRequest.Model, sessionFingerprint)
 	if iter.Len() == 0 {
 		err := errors.New("no available channel")
 		resp.Error(c, http.StatusServiceUnavailable, err.Error())
@@ -74,9 +76,10 @@ func newRelayRun(c *gin.Context, inboundType llm.APIFormat, inAdapter transforme
 	}
 
 	return &relayRun{
-		c:               c,
-		inAdapter:       inAdapter,
-		internalRequest: internalRequest,
+		c:                  c,
+		inAdapter:          inAdapter,
+		internalRequest:    internalRequest,
+		sessionFingerprint: sessionFingerprint,
 		metrics: &RelayMetrics{
 			APIKeyID:        apiKeyID,
 			RequestModel:    internalRequest.Model,
@@ -173,6 +176,23 @@ func (r *relayRun) prepareAttempt() (*relayAttempt, error) {
 }
 
 func (r *relayRun) selectChannelKey(channel *dbmodel.Channel) dbmodel.ChannelKey {
+	// 会话粘性 Key 亲和：同一会话优先复用上次成功的 Key，最大化上游 prompt cache 命中。
+	// 粘性 Key 被冷却（GetChannelKeyCandidates 已过滤）、本次请求已失败或已熔断时，
+	// 自动回退到下面的常规 Key 选择，不影响故障转移。
+	if stickyKeyID := r.iter.StickyKeyID(channel.ID); stickyKeyID != 0 {
+		for _, key := range channel.GetChannelKeyCandidates() {
+			if key.ID != stickyKeyID {
+				continue
+			}
+			if _, failed := r.failedKeys[channelKeyRef{channelID: channel.ID, keyID: key.ID}]; failed {
+				break
+			}
+			if !r.iter.SkipCircuitBreak(channel.ID, key.ID, channel.Name) {
+				return key
+			}
+			break
+		}
+	}
 	var retryFallback dbmodel.ChannelKey
 	for _, key := range channel.GetChannelKeyCandidates() {
 		if key.ChannelKey == "" {
@@ -214,7 +234,12 @@ func (ra *relayAttempt) run() (bool, error) {
 			RequestSuccess: 1,
 		})
 		balancer.RecordSuccess(ra.channel.ID, ra.usedKey.ID, ra.internalRequest.Model)
-		balancer.SetSticky(ra.metrics.APIKeyID, ra.metrics.RequestModel, ra.channel.ID, ra.usedKey.ID)
+		balancer.SetSticky(
+			balancer.SessionKey(ra.metrics.APIKeyID, ra.metrics.RequestModel, ra.sessionFingerprint),
+			ra.channel.ID,
+			ra.usedKey.ID,
+			time.Duration(ra.group.SessionKeepTime)*time.Second,
+		)
 		return false, nil
 	}
 
@@ -638,4 +663,44 @@ func messageTextContentEmpty(msg *llm.Message) bool {
 		return true
 	}
 	return *c.Content == ""
+}
+
+// sessionFingerprint 计算客户端对话指纹，用于粘性会话的对话粒度路由。
+// Chat/Anthropic Messages API 是无状态的：客户端每轮都重发完整历史，因此同一对话
+// 的"首条消息"跨轮次保持不变。取首条消息 + 首条 user 消息的文本做 xxhash：
+//   - 同一对话（即使中途增长历史）指纹不变；
+//   - 同一 API Key 同一模型开新对话，首条消息不同 → 指纹不同，路由独立。
+// 无消息体的请求（嵌入/图片等）返回空串，退化为 apiKey+模型级亲和。
+func sessionFingerprint(req *llm.Request) string {
+	if req == nil || len(req.Messages) == 0 {
+		return ""
+	}
+	h := xxhash.New()
+	writeMessageFingerprint(h, req.Messages[0])
+	for i := 1; i < len(req.Messages); i++ {
+		if strings.EqualFold(req.Messages[i].Role, "user") {
+			writeMessageFingerprint(h, req.Messages[i])
+			break
+		}
+	}
+	return fmt.Sprintf("%x", h.Sum64())
+}
+
+// fingerprintFieldSep 用不可见分隔符隔开指纹字段，避免相邻文本拼接后产生歧义。
+const fingerprintFieldSep = "\x00"
+
+func writeMessageFingerprint(h *xxhash.Digest, msg llm.Message) {
+	h.WriteString(strings.ToLower(msg.Role))
+	h.WriteString(fingerprintFieldSep)
+	if msg.Content.Content != nil {
+		h.WriteString(*msg.Content.Content)
+	} else {
+		for _, part := range msg.Content.MultipleContent {
+			if part.Text != nil {
+				h.WriteString(*part.Text)
+			}
+			h.WriteString(fingerprintFieldSep)
+		}
+	}
+	h.WriteString(fingerprintFieldSep)
 }
