@@ -7,7 +7,7 @@ export type ToolbarSortField = 'name' | 'created';
 export type ToolbarCreatedSortablePage = 'channel' | 'group';
 export const TOOLBAR_PAGES = ['channel', 'group'] as const;
 export type ToolbarPage = (typeof TOOLBAR_PAGES)[number];
-export type ChannelFilter = 'all' | 'enabled' | 'disabled' | 'needs-attention' | 'no-available-keys' | 'abnormal-keys' | 'auto-check-off';
+export type ChannelFilter = 'all' | 'enabled' | 'disabled' | 'needs-attention' | 'no-available-keys' | 'abnormal-keys' | 'auto-check-off' | 'ungrouped';
 export type GroupFilter = 'all' | 'with-members' | 'empty';
 
 interface ToolbarViewOptionsState {

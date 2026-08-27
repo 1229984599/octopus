@@ -1,7 +1,7 @@
 import { lazyWithPreload } from './lazy-with-preload';
 import { lazy, ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Home, Radio, FolderTree, Settings, Logs, ShieldCheck } from 'lucide-react';
+import { Home, Radio, FolderTree, Settings, Logs, ShieldCheck, HeartPulse } from 'lucide-react';
 
 export type LazyComponent = ReturnType<typeof lazy> & {
     preload: () => Promise<{ default: ComponentType<Record<string, never>> }>
@@ -20,11 +20,13 @@ const Group_Module = lazyWithPreload(() => import('@/components/modules/group').
 const Log_Module = lazyWithPreload(() => import('@/components/modules/log').then(m => ({ default: m.Log })));
 const Setting_Module = lazyWithPreload(() => import('@/components/modules/setting').then(m => ({ default: m.Setting })));
 const AutoCheck_Module = lazyWithPreload(() => import('@/components/modules/autocheck').then(m => ({ default: m.AutoCheckPage })));
+const Health_Module = lazyWithPreload(() => import('@/components/modules/health').then(m => ({ default: m.HealthOverview })));
 
 export const ROUTES: RouteConfig[] = [
     { id: 'home', label: 'Home', icon: Home, component: Home_Module },
     { id: 'channel', label: 'Channel', icon: Radio, component: Channel_Module },
     { id: 'group', label: 'Group', icon: FolderTree, component: Group_Module },
+    { id: 'health', label: 'Health', icon: HeartPulse, component: Health_Module },
     { id: 'autocheck', label: 'Auto Check', icon: ShieldCheck, component: AutoCheck_Module },
     { id: 'log', label: 'Log', icon: Logs, component: Log_Module },
     { id: 'setting', label: 'Setting', icon: Settings, component: Setting_Module },

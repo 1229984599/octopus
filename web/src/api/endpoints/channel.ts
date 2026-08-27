@@ -537,3 +537,22 @@ export function useSyncChannel() {
         },
     });
 }
+
+/**
+ * 对指定渠道立即执行一次自动分组 Hook（健康总览页"未分组渠道"一键修复用）
+ */
+export function useRegroupChannel() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: number) => {
+            return apiClient.post<Channel>('/api/v1/channel/regroup', { id });
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['groups', 'list'] });
+            queryClient.invalidateQueries({ queryKey: ['models', 'channel'] });
+        },
+        onError: (error) => {
+            logger.error('渠道重新分组失败:', error);
+        },
+    });
+}

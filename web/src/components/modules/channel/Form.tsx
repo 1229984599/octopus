@@ -9,12 +9,13 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/components/common/Toast';
 import { useTranslations } from '@/lib/translations';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { Ban, Check, GripVertical, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { Ban, Check, ClipboardPaste, GripVertical, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CheckResultDetail } from '@/components/common/CheckResultDetail';
 import { getKeyHealth, keyNeedsAttention, type KeyHealthState } from './health';
@@ -180,6 +181,8 @@ export function ChannelForm({
     const [modelSearch, setModelSearch] = useState('');
     const [modelPopoverOpen, setModelPopoverOpen] = useState(false);
     const [checkResults, setCheckResults] = useState<Record<number, ChannelKeyCheckResult>>({});
+    const [bulkImportOpen, setBulkImportOpen] = useState(false);
+    const [bulkKeyInput, setBulkKeyInput] = useState('');
     const [keyFilter, setKeyFilter] = useState<KeyFilter>('all');
     const inputRef = useRef<HTMLInputElement>(null);
     const keyListRef = useRef<HTMLDivElement>(null);
@@ -394,6 +397,41 @@ export function ChannelForm({
             ...formData,
             keys: [...formData.keys, { enabled: true, channel_key: '', priority: formData.keys.length + 1, weight: 1 }],
         });
+    };
+
+    // 批量粘贴导入：按行拆分（支持 "key#备注" 格式），去重去空后一次生成多行 Key
+    const handleBulkImportKeys = () => {
+        const existing = new Set(formData.keys.map((k) => k.channel_key.trim()).filter(Boolean));
+        const lines = bulkKeyInput.split(/\r?\n/);
+        const newKeys: ChannelKeyFormItem[] = [];
+        let skipped = 0;
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            const [rawKey, ...remarkParts] = trimmed.split('#');
+            const key = rawKey.trim();
+            if (!key) continue;
+            if (existing.has(key)) {
+                skipped++;
+                continue;
+            }
+            existing.add(key);
+            newKeys.push({
+                enabled: true,
+                channel_key: key,
+                remark: remarkParts.join('#').trim() || undefined,
+                priority: formData.keys.length + newKeys.length + 1,
+                weight: 1,
+            });
+        }
+        if (newKeys.length === 0) {
+            toast.warning(keyT('bulkImportEmpty'), { description: keyT('bulkImportEmptyHint') });
+            return;
+        }
+        onFormDataChange({ ...formData, keys: [...formData.keys, ...newKeys] });
+        setBulkKeyInput('');
+        setBulkImportOpen(false);
+        toast.success(keyT('bulkImportDone'), { description: `${newKeys.length} ${skipped > 0 ? `(跳过重复 ${skipped})` : ''}`.trim() });
     };
 
     const normalizeKeyOrder = (keys: ChannelKeyFormItem[]) =>
@@ -948,6 +986,16 @@ export function ChannelForm({
                         <Plus className="h-3 w-3 mr-1" />
                         {t('add')}
                     </Button>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setBulkImportOpen(true)}
+                        className="h-8 rounded-lg px-2 text-xs text-muted-foreground/80 hover:text-muted-foreground"
+                    >
+                        <ClipboardPaste className="h-3 w-3 mr-1" />
+                        {t('bulkImport')}
+                    </Button>
                 </div>
                 <div className="flex flex-wrap gap-1.5 rounded-xl border border-border/60 bg-muted/20 p-1.5">
                     {keyFilterOptions.map((option) => (
@@ -1448,6 +1496,26 @@ export function ChannelForm({
                     {isPending ? pendingText : submitText}
                 </Button>
             </div>
+
+            <Dialog open={bulkImportOpen} onOpenChange={setBulkImportOpen}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{t('bulkImport')}</DialogTitle>
+                        <DialogDescription>{t('bulkImportHint')}</DialogDescription>
+                    </DialogHeader>
+                    <textarea
+                        value={bulkKeyInput}
+                        onChange={(e) => setBulkKeyInput(e.target.value)}
+                        placeholder={t('bulkImportPlaceholder')}
+                        rows={8}
+                        className="w-full rounded-xl border border-border bg-background p-3 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setBulkImportOpen(false)}>{t('bulkImportCancel')}</Button>
+                        <Button type="button" onClick={handleBulkImportKeys}>{t('bulkImportConfirm')}</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </form>
     );
 }

@@ -27,7 +27,7 @@ import {
     type ToolbarSortOrder,
 } from './view-options-store';
 
-const CHANNEL_FILTER_OPTIONS: ChannelFilter[] = ['all', 'needs-attention', 'no-available-keys', 'abnormal-keys', 'auto-check-off', 'enabled', 'disabled'];
+const CHANNEL_FILTER_OPTIONS: ChannelFilter[] = ['all', 'needs-attention', 'no-available-keys', 'abnormal-keys', 'ungrouped', 'auto-check-off', 'enabled', 'disabled'];
 const GROUP_FILTER_OPTIONS: GroupFilter[] = ['all', 'with-members', 'empty'];
 type CombinedSortOption = {
     value: `${ToolbarSortField}-${ToolbarSortOrder}`;
@@ -84,6 +84,7 @@ export function Toolbar() {
         all: 'popover.filter.channel.all',
         'needs-attention': 'popover.filter.channel.needsAttention',
         'no-available-keys': 'popover.filter.channel.noAvailableKeys',
+        'ungrouped': 'popover.filter.channel.ungrouped',
         'abnormal-keys': 'popover.filter.channel.abnormalKeys',
         'auto-check-off': 'popover.filter.channel.autoCheckOff',
         enabled: 'popover.filter.channel.enabled',

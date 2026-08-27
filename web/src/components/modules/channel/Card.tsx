@@ -32,12 +32,14 @@ export function Card({
     autoOpenEdit = false,
     onAutoOpenEdit,
     onAutoClose,
+    ungrouped = false,
 }: {
     channel: Channel;
     stats: StatsMetricsFormatted;
     layout?: 'grid' | 'list';
     selectionMode?: boolean;
     selected?: boolean;
+    ungrouped?: boolean;
     onToggleSelect?: (id: number) => void;
     autoOpenEdit?: boolean;
     onAutoOpenEdit?: (id: number) => void;
@@ -131,6 +133,18 @@ export function Card({
                             +{hiddenTagCount}
                         </Badge>
                     )}
+                    {ungrouped && (
+                        <Badge variant="secondary" className="rounded-md bg-amber-500/15 px-1.5 py-0 text-[10px] font-normal text-amber-700 dark:text-amber-400">
+                            {t('ungrouped')}
+                        </Badge>
+                    )}
+                </div>
+            )}
+            {ungrouped && channel.tags.length === 0 && (
+                <div className="flex min-h-6">
+                    <Badge variant="secondary" className="rounded-md bg-amber-500/15 px-1.5 py-0 text-[10px] font-normal text-amber-700 dark:text-amber-400">
+                        {t('ungrouped')}
+                    </Badge>
                 </div>
             )}
 

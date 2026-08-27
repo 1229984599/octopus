@@ -12,6 +12,7 @@ import {
     useDeleteChannelTag,
     useRenameChannelTag,
 } from '@/api/endpoints/channel';
+import { useGroupList } from '@/api/endpoints/group';
 import { Card } from './Card';
 import { useSearchStore, useToolbarViewOptionsStore } from '@/components/modules/toolbar';
 import { useNavStore } from '@/components/modules/navbar';
@@ -86,6 +87,14 @@ function deferStateUpdate(update: () => void) {
 
 export function Channel() {
     const { data: channelsData } = useChannelList();
+    const { data: groups } = useGroupList();
+    const groupedChannelIDs = useMemo(() => {
+        const ids = new Set<number>();
+        for (const group of groups ?? []) {
+            for (const item of group.items ?? []) ids.add(item.channel_id);
+        }
+        return ids;
+    }, [groups]);
     const batchDeleteChannels = useBatchDeleteChannels();
     const pageKey = 'channel' as const;
     const searchTerm = useSearchStore((s) => s.getSearchTerm(pageKey));
@@ -140,9 +149,10 @@ export function Channel() {
         if (filter === 'no-available-keys') return byTag.filter((c) => getChannelHealth(c.raw).availableKeys === 0);
         if (filter === 'abnormal-keys') return byTag.filter((c) => getChannelHealth(c.raw).abnormalKeys > 0);
         if (filter === 'auto-check-off') return byTag.filter((c) => !c.raw.auto_check);
+        if (filter === 'ungrouped') return byTag.filter((c) => !groupedChannelIDs.has(c.raw.id));
 
         return byTag;
-    }, [sortedChannels, searchTerm, filter, selectedTag]);
+    }, [sortedChannels, searchTerm, filter, selectedTag, groupedChannelIDs]);
 
     const availableTags = useMemo(() => {
         const tags = new Set<string>();
@@ -373,6 +383,7 @@ export function Channel() {
                                 layout={layout}
                                 selectionMode={selectionMode}
                                 selected={selectedIds.has(item.raw.id)}
+                                ungrouped={!groupedChannelIDs.has(item.raw.id)}
                                 onToggleSelect={toggleSelect}
                                 autoOpenEdit={pendingEditChannelId === item.raw.id}
                                 onAutoOpenEdit={clearPendingEditChannel}

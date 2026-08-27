@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import { Check, ChevronDownIcon, Plus, RefreshCw, RotateCcw, Search, Sparkles, Trash2 } from 'lucide-react';
 import { useTranslations } from '@/lib/translations';
+import { CheckResultDetail } from '@/components/common/CheckResultDetail';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import { useModelChannelList, type LLMChannel } from '@/api/endpoints/model';
 import { Button } from '@/components/ui/button';
@@ -407,15 +408,12 @@ function ExcludedSection({
                                     </span>
                                 )}
                                 {item.last_check_ok !== undefined && (
-                                    <span
-                                        className={cn(
-                                            'shrink-0 rounded px-1.5 py-0.5 text-[10px]',
-                                            item.last_check_ok ? 'bg-primary/10 text-primary' : 'bg-destructive/10 text-destructive'
-                                        )}
-                                        title={item.last_check_message}
-                                    >
-                                        {item.last_check_ok ? t('form.checkOk') : t('form.checkBad')}
-                                    </span>
+                                    <CheckResultDetail
+                                        ok={item.last_check_ok}
+                                        label={item.last_check_ok ? t('form.checkOk') : t('form.checkBad')}
+                                        detail={item.last_check_message || undefined}
+                                        className="shrink-0"
+                                    />
                                 )}
                                 <button
                                     type="button"

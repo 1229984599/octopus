@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type NavItem = 'home' | 'channel' | 'group' | 'autocheck' | 'log' | 'setting'
+export type NavItem = 'home' | 'channel' | 'group' | 'health' | 'autocheck' | 'log' | 'setting'
 
-const NAV_ORDER: NavItem[] = ['home', 'channel', 'group', 'autocheck', 'log', 'setting']
+const NAV_ORDER: NavItem[] = ['home', 'channel', 'group', 'health', 'autocheck', 'log', 'setting']
 
 function normalizeNavItem(item: unknown): NavItem {
     return NAV_ORDER.includes(item as NavItem) ? item as NavItem : 'channel'
