@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/1229984599/octopus/internal/model"
@@ -61,5 +62,64 @@ func TestSelectCheckStrategyKeepsProviderSpecificChecks(t *testing.T) {
 				t.Fatalf("expected %s, got %s", tt.want, got)
 			}
 		})
+	}
+}
+
+func TestUpstreamErrorDetailExtractsNestedMessage(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "openai style",
+			body: `{"error":{"message":"Insufficient Balance","type":"unknown_error","param":null,"code":"invalid_request_error"}}`,
+			want: "Insufficient Balance",
+		},
+		{
+			name: "anthropic style",
+			body: `{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}`,
+			want: "invalid x-api-key",
+		},
+		{
+			name: "gemini style",
+			body: `{"error":{"code":400,"message":"API key not valid.","status":"INVALID_ARGUMENT"}}`,
+			want: "API key not valid.",
+		},
+		{
+			name: "plain text fallback",
+			body: "upstream gateway timeout",
+			want: "upstream gateway timeout",
+		},
+		{
+			name: "json without error message falls back to raw",
+			body: `{"unexpected":"shape"}`,
+			want: `{"unexpected":"shape"}`,
+		},
+		{
+			name: "empty message field falls back to raw",
+			body: `{"error":{"message":"  "}}`,
+			want: `{"error":{"message":"  "}}`,
+		},
+		{
+			name: "empty body",
+			body: "",
+			want: "",
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := upstreamErrorDetail([]byte(tt.body)); got != tt.want {
+				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestUpstreamErrorDetailTruncatesLongSnippet(t *testing.T) {
+	body := []byte(strings.Repeat("x", maxCheckErrorDetailLen+100))
+	got := upstreamErrorDetail(body)
+	if len(got) != maxCheckErrorDetailLen {
+		t.Fatalf("expected snippet truncated to %d bytes, got %d", maxCheckErrorDetailLen, len(got))
 	}
 }

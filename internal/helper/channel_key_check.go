@@ -85,6 +85,7 @@ func CheckChannelKeyWithOptions(ctx context.Context, channel model.Channel, key 
 	}
 	if strings.TrimSpace(key.ChannelKey) == "" {
 		result.Error = "key empty"
+		saveCheckedKey(key, 0, result.Error)
 		return result
 	}
 	if strings.TrimSpace(modelName) == "" {
@@ -107,25 +108,70 @@ func CheckChannelKeyWithOptions(ctx context.Context, channel model.Channel, key 
 
 	if err := op.WaitChannelRateLimit(ctx, channel.ID, channel.RPM); err != nil {
 		result.Error = err.Error()
-		result.LastUseTimeStamp = saveCheckedKey(key, 0)
+		result.LastUseTimeStamp = saveCheckedKey(key, 0, result.Error)
 		return result
 	}
 	resp, err := client.Do(req)
 	if err != nil {
 		result.Error = err.Error()
-		result.LastUseTimeStamp = saveCheckedKey(key, 0)
+		result.LastUseTimeStamp = saveCheckedKey(key, 0, result.Error)
 		return result
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	// 上游把具体失败原因写在响应体里（如 DeepSeek 的 "Insufficient Balance"），
+	// 只保留 resp.Status 会丢失全部可诊断信息，这里截取一小段拼进 Error。
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxCheckErrorBodyBytes))
 
 	result.StatusCode = resp.StatusCode
 	result.OK = resp.StatusCode >= 200 && resp.StatusCode < 300
 	if !result.OK {
 		result.Error = resp.Status
+		if detail := upstreamErrorDetail(body); detail != "" {
+			result.Error = resp.Status + " - " + detail
+		}
 	}
-	result.LastUseTimeStamp = saveCheckedKey(key, resp.StatusCode)
+	result.LastUseTimeStamp = saveCheckedKey(key, resp.StatusCode, checkFailureMessage(result))
 	return result
+}
+
+// checkFailureMessage 返回需要随 Key 状态一起持久化的失败原因；检测成功时为空
+// （清空历史失败消息）。本地构造失败（key 为空、模型缺失、网络错误等）同样落库。
+func checkFailureMessage(result ChannelKeyCheckResult) string {
+	if result.OK || result.Error == "" {
+		return ""
+	}
+	message := result.Error
+	if len(message) > maxCheckErrorDetailLen {
+		message = message[:maxCheckErrorDetailLen]
+	}
+	return message
+}
+
+const (
+	// maxCheckErrorBodyBytes 限制从上游错误响应体读取的字节数：错误 payload 都很短，
+	// 但部分网关失败时返回整页 HTML，必须设上限。
+	maxCheckErrorBodyBytes = 2048
+	// maxCheckErrorDetailLen 错误详情最终展示的长度上限，与日志字段 500 字符截断惯例一致。
+	maxCheckErrorDetailLen = 500
+)
+
+// upstreamErrorDetail 从上游错误响应体提取人可读的失败原因。
+// OpenAI/Anthropic/Gemini 及多数 OpenAI 兼容实现都嵌套在 "error.message" 下；
+// 其他格式（纯文本、HTML）退回到原始片段。
+func upstreamErrorDetail(body []byte) string {
+	var payload struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &payload); err == nil && strings.TrimSpace(payload.Error.Message) != "" {
+		return strings.TrimSpace(payload.Error.Message)
+	}
+	snippet := strings.TrimSpace(string(body))
+	if len(snippet) > maxCheckErrorDetailLen {
+		snippet = snippet[:maxCheckErrorDetailLen]
+	}
+	return snippet
 }
 
 func NormalizeCheckMode(mode CheckMode) CheckMode {
@@ -474,13 +520,15 @@ func buildGeminiKeyCheckRequest(ctx context.Context, baseURL, key, modelName str
 	return req, nil
 }
 
-func saveCheckedKey(key model.ChannelKey, statusCode int) int64 {
+// saveCheckedKey 更新 Key 的检测状态（状态码、时间戳、失败原因）到内存缓存，由调用方延迟落库。
+func saveCheckedKey(key model.ChannelKey, statusCode int, failureMessage string) int64 {
 	if key.ID == 0 || key.ChannelID == 0 {
 		return 0
 	}
 	now := time.Now().Unix()
 	key.StatusCode = statusCode
 	key.LastUseTimeStamp = now
+	key.LastCheckMessage = failureMessage
 	_ = op.ChannelKeyUpdate(key)
 	return now
 }

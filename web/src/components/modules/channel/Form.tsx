@@ -26,6 +26,8 @@ export interface ChannelKeyFormItem {
     channel_key: string;
     status_code?: number;
     last_use_time_stamp?: number;
+    /** 最近一次检测失败的原因（来自后端持久化）；检测成功后为空 */
+    last_check_message?: string;
     remark?: string;
     priority?: number;
     weight?: number;
@@ -527,6 +529,7 @@ export function ChannelForm({
                                 ...key,
                                 status_code: result.status_code,
                                 last_use_time_stamp: result.last_use_time_stamp ?? key.last_use_time_stamp,
+                                last_check_message: result.ok ? '' : result.error,
                             } : key;
                         }),
                     });
@@ -1041,6 +1044,13 @@ export function ChannelForm({
                                                 ok={checkResults[k.id].ok}
                                                 label={checkResults[k.id].ok ? keyT('ok') : keyT('bad')}
                                                 detail={[checkResults[k.id].note, checkResults[k.id].strategy ? `检测方式: ${checkResults[k.id].strategy}` : '', checkResults[k.id].error].filter(Boolean).join('\n')}
+                                            />
+                                        )}
+                                        {typeof k.id === 'number' && !checkResults[k.id] && k.last_check_message && (
+                                            <CheckResultDetail
+                                                ok={false}
+                                                label={keyT('bad')}
+                                                detail={[k.last_check_message, k.last_use_time_stamp ? `${keyT('lastChecked')}: ${new Date(k.last_use_time_stamp * 1000).toLocaleString()}` : ''].filter(Boolean).join('\n')}
                                             />
                                         )}
                                         {Boolean(k.last_use_time_stamp) && (

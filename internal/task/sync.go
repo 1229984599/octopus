@@ -50,6 +50,9 @@ func SyncModelsTask() {
 				log.Errorf("failed to update channel %s: %v", channel.Name, err)
 				continue
 			}
+			// channel 是循环里的旧结构体，Model 还是更新前的值；就地刷新，
+			// 否则下面的自动分组拿到旧（首次同步时为空）列表，新模型永远进不了分组。
+			channel.Model = fetchModelStr
 		}
 		// 批量删除消失的模型对应的 GroupItem
 		if len(deletedModels) > 0 {

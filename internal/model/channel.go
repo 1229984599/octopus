@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"sort"
 	"strconv"
 	"sync/atomic"
@@ -180,6 +181,9 @@ type ChannelKey struct {
 	ChannelKey       string `json:"channel_key"`
 	StatusCode       int    `json:"status_code"`
 	LastUseTimeStamp int64  `json:"last_use_time_stamp"`
+	// LastCheckMessage 最近一次检测失败的原因（含上游返回的具体错误详情），
+	// 检测成功时清空；命名沿用 group_items.last_check_message 的惯例。
+	LastCheckMessage string `json:"last_check_message"`
 	Remark           string `json:"remark"`
 	Priority         int    `json:"priority" gorm:"default:1"`
 	Weight           int    `json:"weight" gorm:"default:1"`
@@ -271,6 +275,20 @@ func (c *Channel) GetBaseUrl() string {
 	return bestURL
 }
 
+// keyCooldownSeconds 返回指定失败状态码的 Key 冷却秒数（自上次使用时间起算）。
+// 429 是短时限速冷却；402（余额不足）只有充值后才会恢复，长冷却避免它反复被
+// 选中、失败、还累计熔断失败次数。401/403 由健康检测自动禁用，无需冷却。
+func keyCooldownSeconds(statusCode int) int64 {
+	switch statusCode {
+	case http.StatusTooManyRequests:
+		return int64(5 * time.Minute / time.Second)
+	case http.StatusPaymentRequired:
+		return int64(30 * time.Minute / time.Second)
+	default:
+		return 0
+	}
+}
+
 func (c *Channel) GetChannelKey() ChannelKey {
 	keys := c.GetChannelKeyCandidates()
 	if len(keys) == 0 {
@@ -291,8 +309,8 @@ func (c *Channel) GetChannelKeyCandidates() []ChannelKey {
 		if !k.Enabled || k.ChannelKey == "" {
 			continue
 		}
-		if k.StatusCode == 429 && k.LastUseTimeStamp > 0 {
-			if nowSec-k.LastUseTimeStamp < int64(5*time.Minute/time.Second) {
+		if cooldown := keyCooldownSeconds(k.StatusCode); cooldown > 0 && k.LastUseTimeStamp > 0 {
+			if nowSec-k.LastUseTimeStamp < cooldown {
 				continue
 			}
 		}

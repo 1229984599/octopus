@@ -43,6 +43,7 @@ function buildChannelFormData(channel: Channel): ChannelFormData {
                 channel_key: k.channel_key,
                 status_code: k.status_code,
                 last_use_time_stamp: k.last_use_time_stamp,
+                last_check_message: k.last_check_message ?? '',
                 remark: k.remark,
                 priority: k.priority > 0 ? k.priority : index + 1,
                 weight: k.weight > 0 ? k.weight : 1,

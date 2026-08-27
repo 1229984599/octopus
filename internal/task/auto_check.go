@@ -791,12 +791,14 @@ func checkResultDetail(result helper.ChannelKeyCheckResult, labels map[int]strin
 	if label == "" {
 		label = fmt.Sprintf("Key #%d", result.ID)
 	}
-	status := "无 HTTP 状态"
-	if result.StatusCode > 0 {
-		status = fmt.Sprintf("HTTP %d", result.StatusCode)
-	}
-	if result.Error != "" {
-		status += " - " + result.Error
+	// 失败时 result.Error 已带 "400 Bad Request - 具体原因" 格式，无需再前缀 HTTP 状态码。
+	status := result.Error
+	if status == "" {
+		if result.StatusCode > 0 {
+			status = fmt.Sprintf("HTTP %d", result.StatusCode)
+		} else {
+			status = "无 HTTP 状态"
+		}
 	}
 	if result.OK {
 		status += "，正常"

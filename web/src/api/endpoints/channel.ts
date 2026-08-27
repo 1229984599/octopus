@@ -56,6 +56,8 @@ export type ChannelKey = {
     channel_key: string;
     status_code: number;
     last_use_time_stamp: number;
+    /** 最近一次检测失败的原因；检测成功后清空 */
+    last_check_message?: string;
     remark: string;
     priority: number;
     weight: number;

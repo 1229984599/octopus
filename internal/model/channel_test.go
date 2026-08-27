@@ -2,8 +2,11 @@ package model
 
 import (
 	"encoding/json"
+	"slices"
+	"sort"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/looplj/axonhub/llm"
 )
@@ -117,5 +120,48 @@ func TestChannelCreateRequestPreservesExplicitZeroDefaults(t *testing.T) {
 	}
 	if req.AutoGroup != AutoGroupTypeNone {
 		t.Fatalf("expected explicit auto_group none to be preserved, got %d", req.AutoGroup)
+	}
+}
+
+func TestGetChannelKeyCandidatesCooldownFiltersFailedKeys(t *testing.T) {
+	now := time.Now().Unix()
+	ch := Channel{
+		KeyMode: GroupModeFailover,
+		Keys: []ChannelKey{
+			// 429 冷却 5 分钟内：跳过
+			{ID: 1, Enabled: true, ChannelKey: "rate-limited", StatusCode: 429, LastUseTimeStamp: now - 60},
+			// 402 冷却 30 分钟内：跳过
+			{ID: 2, Enabled: true, ChannelKey: "no-balance", StatusCode: 402, LastUseTimeStamp: now - 10*60},
+			// 402 冷却已过：可用
+			{ID: 3, Enabled: true, ChannelKey: "no-balance-recovered", StatusCode: 402, LastUseTimeStamp: now - 31*60},
+			// 401 无冷却（由健康检测禁用）：仍可用
+			{ID: 4, Enabled: true, ChannelKey: "unauthorized", StatusCode: 401, LastUseTimeStamp: now - 60},
+			// 429 冷却已过：可用
+			{ID: 5, Enabled: true, ChannelKey: "rate-limited-recovered", StatusCode: 429, LastUseTimeStamp: now - 6*60},
+		},
+	}
+
+	got := ch.GetChannelKeyCandidates()
+	gotIDs := make([]int, 0, len(got))
+	for _, k := range got {
+		gotIDs = append(gotIDs, k.ID)
+	}
+	sort.Ints(gotIDs)
+	if !slices.Equal(gotIDs, []int{3, 4, 5}) {
+		t.Fatalf("expected keys [3 4 5] after cooldown filtering, got %v", gotIDs)
+	}
+}
+
+func TestGetChannelKeyCandidatesCooldownRequiresTimestamp(t *testing.T) {
+	// 无时间戳的失败 Key（如刚导入）不进入冷却，仍参与调度
+	ch := Channel{
+		KeyMode: GroupModeFailover,
+		Keys: []ChannelKey{
+			{ID: 1, Enabled: true, ChannelKey: "no-balance-no-ts", StatusCode: 402},
+		},
+	}
+	got := ch.GetChannelKeyCandidates()
+	if len(got) != 1 || got[0].ID != 1 {
+		t.Fatalf("expected key 1 without timestamp to stay available, got %v", got)
 	}
 }
