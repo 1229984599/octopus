@@ -257,22 +257,29 @@ func (c *Channel) GetBaseUrl() string {
 		return ""
 	}
 
-	bestURL := ""
-	bestDelay := 0
-	bestSet := false
+	// delay=0 表示从未测速；把它当"最快"会让未测速的 URL 永远优先。
+	// 规则：存在已测速（delay>0）的 URL 时在已测速集合里选最小；全未测速时保持原顺序取首个。
+	bestMeasuredURL := ""
+	bestMeasuredDelay := 0
+	firstURL := ""
 
 	for _, bu := range c.BaseUrls {
 		if bu.URL == "" {
 			continue
 		}
-		if !bestSet || bu.Delay < bestDelay {
-			bestURL = bu.URL
-			bestDelay = bu.Delay
-			bestSet = true
+		if firstURL == "" {
+			firstURL = bu.URL
+		}
+		if bu.Delay > 0 && (bestMeasuredURL == "" || bu.Delay < bestMeasuredDelay) {
+			bestMeasuredURL = bu.URL
+			bestMeasuredDelay = bu.Delay
 		}
 	}
 
-	return bestURL
+	if bestMeasuredURL != "" {
+		return bestMeasuredURL
+	}
+	return firstURL
 }
 
 // keyCooldownSeconds 返回指定失败状态码的 Key 冷却秒数（自上次使用时间起算）。

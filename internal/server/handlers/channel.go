@@ -16,6 +16,8 @@ import (
 	"github.com/1229984599/octopus/internal/server/resp"
 	"github.com/1229984599/octopus/internal/server/router"
 	"github.com/1229984599/octopus/internal/task"
+	"github.com/1229984599/octopus/internal/utils/log"
+	"github.com/1229984599/octopus/internal/utils/xstrings"
 	"github.com/gin-gonic/gin"
 )
 
@@ -80,7 +82,41 @@ func init() {
 		AddRoute(
 			router.NewRoute("/last-sync-time", http.MethodGet).
 				Handle(getLastSyncTime),
+		).
+		AddRoute(
+			router.NewRoute("/regroup", http.MethodPost).
+				Handle(regroupChannel),
 		)
+}
+
+// regroupChannel 对指定渠道立即执行一次自动分组（拉取渠道最新配置后按 auto_group 规则入组）。
+// 用于健康总览页的"未分组渠道"一键修复。
+func regroupChannel(c *gin.Context) {
+	var request struct {
+		ID int `json:"id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		resp.Error(c, http.StatusBadRequest, resp.ErrInvalidJSON)
+		return
+	}
+	ctx := c.Request.Context()
+	channel, err := op.ChannelGet(request.ID, ctx)
+	if err != nil {
+		resp.Error(c, http.StatusNotFound, err.Error())
+		return
+	}
+	if channel.AutoGroup == model.AutoGroupTypeNone {
+		resp.Error(c, http.StatusBadRequest, "channel auto_group is none")
+		return
+	}
+	helper.ChannelAutoGroup(channel, ctx)
+	// 重新加载分组缓存，把本次入组结果返回给前端展示
+	channel, err = op.ChannelGet(request.ID, ctx)
+	if err != nil {
+		resp.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp.Success(c, channel)
 }
 
 func listChannel(c *gin.Context) {
@@ -109,12 +145,29 @@ func createChannel(c *gin.Context) {
 	}
 	stats := op.StatsChannelGet(channel.ID)
 	channel.Stats = &stats
-	go func(channel *model.Channel) {
+	go func(channel model.Channel) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		helper.ChannelBaseUrlDelayUpdate(channel, ctx)
-		helper.ChannelAutoGroup(channel, ctx)
-	}(&channel)
+		helper.ChannelBaseUrlDelayUpdate(&channel, ctx)
+		// 新渠道创建时模型列表通常为空（auto_sync 默认关闭，要等下一次同步任务），
+		// 这里主动拉一次上游模型列表并持久化，让"创建→粘贴 Key→保存"即完成全部配置。
+		if strings.TrimSpace(channel.Model) == "" && len(channel.GetChannelKeyCandidates()) > 0 {
+			if models, err := helper.FetchModels(ctx, channel); err != nil {
+				log.Warnf("auto fetch models on channel create %s: %v", channel.Name, err)
+			} else if len(models) > 0 {
+				modelStr := strings.Join(xstrings.TrimCompact(models), ",")
+				if updated, err := op.ChannelUpdate(&model.ChannelUpdateRequest{
+					ID:    channel.ID,
+					Model: &modelStr,
+				}, ctx); err != nil {
+					log.Warnf("persist auto fetched models for channel %s: %v", channel.Name, err)
+				} else {
+					channel = *updated
+				}
+			}
+		}
+		helper.ChannelAutoGroup(&channel, ctx)
+	}(channel)
 	resp.Success(c, channel)
 }
 

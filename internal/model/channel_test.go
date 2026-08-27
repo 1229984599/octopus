@@ -165,3 +165,35 @@ func TestGetChannelKeyCandidatesCooldownRequiresTimestamp(t *testing.T) {
 		t.Fatalf("expected key 1 without timestamp to stay available, got %v", got)
 	}
 }
+
+func TestGetBaseUrlPrefersMeasuredDelay(t *testing.T) {
+	// 第一个 URL 从未测速（delay=0），第二个已测速：应选已测速的，而不是把 0 当最快
+	ch := Channel{BaseUrls: []BaseUrl{
+		{URL: "https://unmeasured.example.com", Delay: 0},
+		{URL: "https://measured.example.com", Delay: 120},
+	}}
+	if got := ch.GetBaseUrl(); got != "https://measured.example.com" {
+		t.Fatalf("expected measured URL, got %s", got)
+	}
+}
+
+func TestGetBaseUrlFallsBackWhenAllUnmeasured(t *testing.T) {
+	ch := Channel{BaseUrls: []BaseUrl{
+		{URL: "https://a.example.com", Delay: 0},
+		{URL: "https://b.example.com", Delay: 0},
+	}}
+	if got := ch.GetBaseUrl(); got != "https://a.example.com" {
+		t.Fatalf("expected first URL when all unmeasured, got %s", got)
+	}
+}
+
+func TestGetBaseUrlPicksLowestMeasured(t *testing.T) {
+	ch := Channel{BaseUrls: []BaseUrl{
+		{URL: "https://slow.example.com", Delay: 500},
+		{URL: "https://fast.example.com", Delay: 80},
+		{URL: "https://unmeasured.example.com", Delay: 0},
+	}}
+	if got := ch.GetBaseUrl(); got != "https://fast.example.com" {
+		t.Fatalf("expected fastest measured URL, got %s", got)
+	}
+}

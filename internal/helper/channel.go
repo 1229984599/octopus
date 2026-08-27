@@ -92,7 +92,9 @@ func matchAutoGroupModels(autoGroup model.AutoGroupType, group model.Group, chan
 			}
 			return matchedModelNames
 		}
-		re, err := regexp2.Compile(group.MatchRegex, regexp2.ECMAScript)
+		// IgnoreCase：模型名大小写因上游而异（MiniMax-M2.7 vs minimax-m2.7），
+		// 分组正则按大小写敏感匹配会让这类渠道永远匹配不上分组。
+		re, err := regexp2.Compile(group.MatchRegex, regexp2.ECMAScript|regexp2.IgnoreCase)
 		if err != nil {
 			log.Warnf("compile regex failed (channel=%d group=%d regex=%q): %v", channelID, group.ID, group.MatchRegex, err)
 			return matchedModelNames
